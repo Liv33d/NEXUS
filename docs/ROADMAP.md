@@ -10,22 +10,24 @@
 - Open‑Meteo Observer weather, air-quality, and daylight context
 - Provider retry/deduplication, cached fallback, and health control surface
 - NASA-textured globe and lazy MapLibre investigation map with clustering, alert polygons, and accessible no-WebGL fallback
-- Official NOAA radar and delayed NASA GIBS true-color contextual overlays
+- Official NOAA radar replay and a bundled Natural Earth offline map fallback
 - User-controlled NOAA radar history replay with reduced-motion and visibility safeguards
 - Global GDACS impact alerts for cyclones, floods, volcanoes, droughts, and wildfires
 - Preserved, bounded NWS alert geometry and auditable investigation source lists
 - Bounded spatial-time candidate generation for mobile-safe correlation
 - H3 indexing, temporal windows, conservative relationships, Discoveries
-- IndexedDB retention, saved Cases, search, Observer permission flow
+- IndexedDB retention, saved Cases, search, and permission-free Observer place selection
 - Unit tests and GitHub Actions verification
 
 ## Next
 
-1. Move high-volume FIRMS normalization and candidate generation into Web Workers.
-2. Add H3 cell inspection, selected tracks, and explicit map legends to the MapLibre investigation mode.
-3. Build transparent per-H3 temporal baselines and component-level anomaly scores.
-4. Add conservative GDELT media-activity ingestion with explicit media labels.
-5. Add rate-aware, viewport-only OpenSky and SatNOGS layers with short retention.
-6. Add replay snapshots, scrubber evolution, provider-specific thinning, and timestamp-aware GOES/Himawari satellite animation.
-7. Add focused entity graph with bounded progressive expansion.
-8. Complete accessibility, battery, storage-management, and mobile performance audits.
+1. Replace permanent Earth controls with contextual Search and Lens sheets.
+2. Build the federated Camera Registry, health checker, clustering, and Portal experience.
+3. Add USGS volcano/HVO camera, NOAA buoy/BuoyCAM, NHC cyclone, and USGS water providers.
+4. Build transparent per-H3 temporal baselines, component scores, and “What changed?” explanations.
+5. Add timestamp- and footprint-aware GOES/Himawari geostationary imagery.
+6. Move FIRMS normalization and candidate generation into Web Workers before adding dense sources.
+7. Add IODA outage, Launch Library 2, selected CelesTrak orbit, and bounded aviation-weather modules.
+8. Add replay snapshots, saved Observer locations, Case notes, and portable provenance export.
+9. Add focused entity graph with bounded progressive expansion.
+10. Complete accessibility, battery, storage-management, and mobile performance audits.
