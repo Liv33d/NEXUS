@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CloudRain, Layers3, Pause, Play, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { CloudRain, Layers3, Pause, Play } from 'lucide-react'
 import {
   AttributionControl,
   Map as MapLibreMap,
@@ -13,7 +13,6 @@ import { geometryBounds, signalAreasGeoJSON, signalPointsGeoJSON } from '../lib/
 import {
   fallbackMapStyle,
   noaaRadarTiles,
-  OPEN_FREE_MAP_STYLE,
   radarFrames,
   worldGridGeoJSON,
 } from '../lib/mapLayers'
@@ -25,18 +24,12 @@ interface Props {
   onSelect(signal: Signal): void
 }
 
-type BasemapState = 'loading' | 'vector' | 'onboard'
-type MapStyle = Exclude<Parameters<MapLibreMap['setStyle']>[0], string | null>
-
 export default function MapView({ signals, selected, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const onSelectRef = useRef(onSelect)
   const signalsRef = useRef(signals)
   const layerStateRef = useRef({ radar: false, signals: true, radarFrame: 0 })
-  const remoteStyleAbortRef = useRef<AbortController | undefined>(undefined)
-  const remoteStyleRequestedRef = useRef(false)
-  const nextStyleRef = useRef<BasemapState>('onboard')
   const [ready, setReady] = useState(false)
   const [radar, setRadar] = useState(false)
   const [radarPlaying, setRadarPlaying] = useState(false)
@@ -44,35 +37,12 @@ export default function MapView({ signals, selected, onSelect }: Props) {
   const reduceMotion = useMemo(() => matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const [radarFrame, setRadarFrame] = useState(frames.length - 1)
   const [signalsVisible, setSignalsVisible] = useState(true)
-  const [basemapState, setBasemapState] = useState<BasemapState>('loading')
   const [rendererError, setRendererError] = useState<string>()
   const points = useMemo(() => signalPointsGeoJSON(signals), [signals])
   const areas = useMemo(() => signalAreasGeoJSON(signals), [signals])
   signalsRef.current = signals
   onSelectRef.current = onSelect
   layerStateRef.current = { radar, signals: signalsVisible, radarFrame }
-
-  const requestVectorBasemap = useCallback(async () => {
-    const map = mapRef.current
-    if (!map) return
-    remoteStyleAbortRef.current?.abort()
-    const controller = new AbortController()
-    remoteStyleAbortRef.current = controller
-    setBasemapState('loading')
-    const timer = window.setTimeout(() => controller.abort(), 10_000)
-    try {
-      const response = await fetch(OPEN_FREE_MAP_STYLE, { signal: controller.signal, headers: { Accept: 'application/json' } })
-      if (!response.ok) throw new Error(`Basemap returned ${response.status}`)
-      const style = await response.json() as MapStyle
-      if (style.version !== 8 || !style.sources || !Array.isArray(style.layers)) throw new Error('Invalid basemap style')
-      nextStyleRef.current = 'vector'
-      map.setStyle(style)
-    } catch {
-      setBasemapState('onboard')
-    } finally {
-      window.clearTimeout(timer)
-    }
-  }, [])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -81,9 +51,9 @@ export default function MapView({ signals, selected, onSelect }: Props) {
       map = new MapLibreMap({
         container: containerRef.current,
         style: fallbackMapStyle(import.meta.env.BASE_URL),
-        center: [8, 22],
-        zoom: 1.35,
-        minZoom: 0.8,
+        center: [0, 12],
+        zoom: 0.45,
+        minZoom: 0.2,
         maxZoom: 16,
         pitch: 0,
         bearing: 0,
@@ -120,11 +90,6 @@ export default function MapView({ signals, selected, onSelect }: Props) {
       if (!map.getLayer('nexus-selected')) map.addLayer({ id: 'nexus-selected', type: 'circle', source: 'nexus-points', filter: ['==', ['get', 'id'], ''], layout: { visibility }, paint: { 'circle-radius': 16, 'circle-color': 'rgba(143,245,232,.12)', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#8ff5e8', 'circle-blur': .15 } })
       setReady(true)
       setRendererError(undefined)
-      setBasemapState(nextStyleRef.current)
-      if (!remoteStyleRequestedRef.current) {
-        remoteStyleRequestedRef.current = true
-        void requestVectorBasemap()
-      }
     }
 
     map.on('style.load', installNexusLayers)
@@ -152,12 +117,11 @@ export default function MapView({ signals, selected, onSelect }: Props) {
     const resize = new ResizeObserver(() => map.resize())
     resize.observe(containerRef.current)
     return () => {
-      remoteStyleAbortRef.current?.abort()
       resize.disconnect()
       map.remove()
       mapRef.current = null
     }
-  }, [frames, reduceMotion, requestVectorBasemap])
+  }, [frames, reduceMotion])
 
   useEffect(() => {
     if (!radar || !radarPlaying || reduceMotion) return
@@ -201,7 +165,6 @@ export default function MapView({ signals, selected, onSelect }: Props) {
     <div ref={containerRef} className="maplibre-host" role="application" aria-label={`Geographic world map showing ${points.features.length} located signals`}/>
     {!ready && !rendererError && <div className="map-loading"><span/><strong>Resolving world geometry</strong></div>}
     {rendererError && <div className="map-error"><strong>Map renderer unavailable</strong><span>{rendererError}</span></div>}
-    {ready && basemapState !== 'vector' && <button className="basemap-recovery" onClick={() => void requestVectorBasemap()} aria-label="Retry detailed vector basemap"><span>{basemapState === 'loading' ? 'DETAILS LOADING' : 'ONBOARD MAP'}</span><RefreshCw className={basemapState === 'loading' ? 'spin' : ''}/></button>}
     <div className="map-layer-dock" role="group" aria-label="Environmental map overlays">
       <button className={radar ? 'active' : ''} aria-pressed={radar} onClick={() => { setRadar((value) => !value); setRadarPlaying(false) }}><CloudRain/><span>Radar<small>{radarFrame === frames.length - 1 ? 'NOAA · latest' : `NOAA · −${(frames.length - radarFrame - 1) * 10} min`}</small></span></button>
       <button className={signalsVisible ? 'active' : ''} aria-pressed={signalsVisible} onClick={() => setSignalsVisible((value) => !value)}><Layers3/><span>Signals<small>{points.features.length} mapped</small></span></button>
