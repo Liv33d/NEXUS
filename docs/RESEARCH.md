@@ -28,6 +28,13 @@ Official-source research also established these constraints:
 - AviationWeather documents a 100-request/minute limit and explicitly disallows browser CORS, so it is not wired directly into the static PWA.
 - NOAA's official radar MapServer exposes MRMS/WSR-88D base reflectivity suitable for projected transparent overlays and reports an approximately five-minute update cadence.
 - NOAA also publishes a time-enabled MRMS ImageServer with a moving four-hour window. NEXUS uses explicit observation timestamps for an opt-in replay rather than downloading a permanent animation.
-- NASA EOSDIS GIBS publishes keyless WMTS/WMS satellite imagery. Stable daily MODIS true color is used now; geostationary GOES/Himawari layers can later support ten-minute animation with careful timestamp discovery and bounded caching.
+- NASA EOSDIS GIBS publishes keyless WMTS/WMS satellite imagery. Raw daily MODIS swaths were rejected as a continuous global background because coverage gaps and polar-orbit seams are visually misleading. Future imagery will use footprint-aware geostationary GOES/Himawari products with explicit timestamps.
 - RainViewer's public weather-map API was investigated but rejected as a core source because current personal/educational restrictions and service-transition history make the official NOAA/NASA combination a more durable default.
 - GDACS is a United Nations–European Commission cooperation framework, not a national warning authority. Its value is global impact screening; NEXUS therefore preserves its alert level while using cautious copy and independent-source labeling.
+- Windy Webcams offers unusually broad coverage but unrestricted catalog access is commercial and incompatible with the no-paid-core constraint. NEXUS will federate official camera providers and may allow optional user-supplied access.
+- USGS Volcano Hazards publishes elevated-state and Hawaiian Volcano Observatory webcam APIs suitable for a scientific camera layer, with the caveat that support is not guaranteed.
+- NOAA NDBC publishes real-time buoy observations and a smaller official BuoyCAM network.
+- Georgia Tech IODA publishes near-real-time macroscopic internet-outage data and an HTTP API; it is appropriate for regional infrastructure signals, not individual tracking.
+- The Space Devs Launch Library 2 is free within a documented 15-request-per-hour limit and is suitable for scheduled launch and space-event Signals.
+- CelesTrak publishes current unclassified GP orbital elements. NEXUS should retrieve only selected groups and propagate positions locally using a compatible SGP4 implementation.
+- ReliefWeb provides a long-running humanitarian report API. Its records must be labeled as reports and never substituted for verified physical observations.
