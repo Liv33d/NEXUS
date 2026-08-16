@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:phone-preview": "NEXUS_SINGLE_FILE=1 vite build --outDir dist-preview && node scripts/inline-preview.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",

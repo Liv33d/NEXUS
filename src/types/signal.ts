@@ -78,9 +78,11 @@ export interface Discovery {
 
 export interface ProviderStatus {
   providerId: string
+  providerName?: string
   state: 'idle' | 'loading' | 'live' | 'cached' | 'rate-limited' | 'unavailable' | 'error'
   lastSuccess?: number
   lastAttempt?: number
   message?: string
   retryAt?: number
+  signalCount?: number
 }

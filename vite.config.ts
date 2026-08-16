@@ -2,11 +2,14 @@ import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const singleFilePreview = process.env.NEXUS_SINGLE_FILE === '1'
+
 export default defineConfig({
   base: './',
   plugins: [
     react(),
     VitePWA({
+      disable: singleFilePreview,
       registerType: 'autoUpdate',
       includeAssets: ['nexus-mark.svg', 'earth-texture.svg'],
       manifest: {
@@ -36,6 +39,25 @@ export default defineConfig({
               expiration: { maxEntries: 12, maxAgeSeconds: 86400 },
               cacheableResponse: { statuses: [0, 200] }
             }
+          },
+          {
+            urlPattern: /^https:\/\/(api\.weather\.gov|eonet\.gsfc\.nasa\.gov|services\.swpc\.noaa\.gov)\//,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'nexus-official-feeds',
+              networkTimeoutSeconds: 8,
+              expiration: { maxEntries: 30, maxAgeSeconds: 86400 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/(api|air-quality-api)\.open-meteo\.com\//,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'nexus-observer-context',
+              expiration: { maxEntries: 20, maxAgeSeconds: 3600 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
           }
         ]
       }
@@ -43,14 +65,15 @@ export default defineConfig({
   ],
   build: {
     target: 'es2022',
-    sourcemap: true,
+    sourcemap: false,
+    cssCodeSplit: !singleFilePreview,
     rollupOptions: {
       output: {
-        manualChunks: {
+        ...(singleFilePreview ? { inlineDynamicImports: true } : { manualChunks: {
           globe: ['react-globe.gl', 'three'],
           storage: ['dexie'],
           spatial: ['h3-js']
-        }
+        } })
       }
     }
   },

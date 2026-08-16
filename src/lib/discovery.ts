@@ -8,11 +8,24 @@ const MAX_TIME_MS = 6 * 60 * 60 * 1000
 
 export function buildRelationships(signals: Signal[]): Relationship[] {
   const relationships: Relationship[] = []
-  const located = signals.filter((signal) => signal.location)
-  for (let i = 0; i < located.length; i += 1) {
-    for (let j = i + 1; j < located.length; j += 1) {
-      const a = located[i]
-      const b = located[j]
+  const located = signals.filter((signal) => signal.location).sort((a, b) => a.timestamp - b.timestamp)
+  const buckets = new Map<string, Signal[]>()
+  const cellDegrees = 4
+  const bucketKey = (latitude: number, longitude: number, time: number) => `${Math.floor((latitude + 90) / cellDegrees)}:${Math.floor((longitude + 180) / cellDegrees)}:${Math.floor(time / MAX_TIME_MS)}`
+  for (const b of located) {
+    if (!b.location) continue
+    const latCell = Math.floor((b.location.latitude + 90) / cellDegrees)
+    const lngCell = Math.floor((b.location.longitude + 180) / cellDegrees)
+    const timeCell = Math.floor(b.timestamp / MAX_TIME_MS)
+    let links = 0
+    for (let latOffset = -1; latOffset <= 1 && links < 12; latOffset += 1) {
+      for (let lngOffset = -1; lngOffset <= 1 && links < 12; lngOffset += 1) {
+        for (let timeOffset = -1; timeOffset <= 1 && links < 12; timeOffset += 1) {
+          const wrappedLng = (lngCell + lngOffset + Math.ceil(360 / cellDegrees)) % Math.ceil(360 / cellDegrees)
+          const candidates = buckets.get(`${latCell + latOffset}:${wrappedLng}:${timeCell + timeOffset}`) ?? []
+          for (let candidateIndex = candidates.length - 1; candidateIndex >= 0 && links < 12; candidateIndex -= 1) {
+            const a = candidates[candidateIndex]
+            if (!a?.location) continue
       if (!a?.location || !b?.location) continue
       const timeDeltaMinutes = Math.abs(a.timestamp - b.timestamp) / 60000
       if (timeDeltaMinutes > MAX_TIME_MS / 60000) continue
@@ -35,7 +48,17 @@ export function buildRelationships(signals: Signal[]): Relationship[] {
         reason: `Signals occurred within ${Math.round(distance)} km and ${Math.round(timeDeltaMinutes)} minutes of one another.`,
         confidence: clamp(1 - distance / 600 - timeDeltaMinutes / 720, 0.1, 0.95),
       })
+            links += 1
+          }
+        }
+      }
     }
+    const key = bucketKey(b.location.latitude, b.location.longitude, b.timestamp)
+    const bucket = buckets.get(key) ?? []
+    bucket.push(b)
+    if (bucket.length > 80) bucket.shift()
+    buckets.set(key, bucket)
+    if (relationships.length >= 4000) break
   }
   return relationships
 }
@@ -58,17 +81,31 @@ function discoveryName(signals: Signal[]): string {
 export function buildDiscoveries(signals: Signal[], now = Date.now()): Discovery[] {
   const recent = signals.filter((signal) => now - signal.timestamp <= 7 * 86400000)
   const relationships = buildRelationships(recent)
-  const groups = new Map<string, Set<string>>()
+  const parent = new Map<string, string>()
+  const find = (id: string): string => {
+    const current = parent.get(id) ?? id
+    if (current === id) { parent.set(id, id); return id }
+    const root = find(current)
+    parent.set(id, root)
+    return root
+  }
+  const union = (a: string, b: string): void => {
+    const rootA = find(a)
+    const rootB = find(b)
+    if (rootA !== rootB) parent.set(rootB, rootA)
+  }
   for (const relationship of relationships) {
-    const root = [...groups.entries()].find(([, ids]) => ids.has(relationship.sourceSignalId) || ids.has(relationship.targetSignalId))?.[0]
-      ?? relationship.sourceSignalId
-    const set = groups.get(root) ?? new Set<string>()
-    set.add(relationship.sourceSignalId)
-    set.add(relationship.targetSignalId)
-    groups.set(root, set)
+    union(relationship.sourceSignalId, relationship.targetSignalId)
   }
   for (const signal of recent.filter((item) => (item.severity ?? 0) >= 60)) {
-    if (![...groups.values()].some((set) => set.has(signal.id))) groups.set(signal.id, new Set([signal.id]))
+    find(signal.id)
+  }
+  const groups = new Map<string, Set<string>>()
+  for (const id of parent.keys()) {
+    const root = find(id)
+    const set = groups.get(root) ?? new Set<string>()
+    set.add(id)
+    groups.set(root, set)
   }
   return [...groups.values()].map((ids) => {
     const members = recent.filter((signal) => ids.has(signal.id))
