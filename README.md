@@ -4,7 +4,7 @@
 
 NEXUS is a mobile-first, privacy-friendly global signal discovery system. It transforms legitimate public data into a traceable model of what is happening on Earth—without paid APIs, accounts, trackers, a proprietary backend, or runtime AI.
 
-The current release is a working multi-source vertical slice. It includes a cinematic interactive globe and atlas view, live USGS earthquakes, NWS severe-weather alerts, NASA EONET natural events, NOAA space weather, optional NASA FIRMS thermal detections, Open‑Meteo Observer context, normalized Signals, H3 indexing, local persistence, temporal filtering, bounded conservative correlation, anomaly scoring, Discoveries, saved Cases, offline PWA support, provider health, and source provenance.
+The current release is a working multi-source vertical slice. It includes a NASA-textured interactive globe, a geographically accurate MapLibre investigation map, live NOAA weather radar, delayed NASA satellite imagery, live USGS earthquakes, NWS severe-weather alerts, NASA EONET natural events, NOAA space weather, optional NASA FIRMS thermal detections, Open‑Meteo Observer context, normalized Signals, H3 indexing, local persistence, temporal filtering, bounded conservative correlation, anomaly scoring, Discoveries, saved Cases, offline PWA support, provider health, and source provenance.
 
 ## Quick start
 
@@ -44,12 +44,12 @@ flowchart TD
   G --> H
 ```
 
-- **UI:** React, TypeScript, Vite, React Globe GL, Three.js
+- **UI:** React, TypeScript, Vite, React Globe GL, Three.js, MapLibre GL JS
 - **State:** Zustand
 - **Persistence:** Dexie/IndexedDB with bounded retention
 - **Validation:** Zod at provider boundaries
 - **Spatial engine:** H3 plus deterministic distance calculations
-- **Offline:** Vite PWA/Workbox application shell and USGS runtime cache
+- **Offline:** Vite PWA/Workbox shell plus bounded provider and map-tile caches
 - **Data boundary:** visualizations never consume provider-native payloads
 
 ## Supported sources
@@ -62,6 +62,8 @@ flowchart TD
 | NOAA SWPC | Live | Global NOAA R/S/G space-weather scales |
 | NASA FIRMS | Optional live/delayed | User-supplied free MAP key stored only on-device |
 | Open‑Meteo | On demand | Weather, wind, air quality, sunrise, and sunset in Observer Mode |
+| NOAA/NWS MRMS | Live overlay | Official base-reflectivity radar, normally refreshed about every five minutes |
+| NASA EOSDIS GIBS | Delayed overlay | Global MODIS Terra corrected-reflectance true color from the previous completed UTC day |
 | NEXUS Demo Network | Built in | Deterministic, isolated replacement mode for exploration and testing |
 
 ## Privacy and credibility
@@ -79,10 +81,11 @@ NEXUS builds to static files in `dist/`. The included `Deploy NEXUS` workflow pu
 
 ## Limitations
 
-- The current atlas is a lightweight offline overview; detailed MapLibre investigation maps and replay tracks remain sequenced work.
+- Radar coverage is regional rather than global; outside NOAA radar domains the layer is intentionally empty.
+- The current global satellite layer favors complete, stable imagery over false immediacy and is explicitly labeled delayed.
 - Baselines are currently recent-device baselines; longer statistical history will improve anomaly context.
 - FIRMS requires the user to enter a free NASA MAP key locally; it is never committed or bundled.
-- Globe texture is intentionally bundled and stylized so the core Earth experience remains offline-capable.
+- Replay tracks and high-frequency geostationary satellite animation remain sequenced work.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for sequenced expansion and [`docs/RESEARCH.md`](docs/RESEARCH.md) for open-source research and license notes.
 
