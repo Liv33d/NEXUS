@@ -46,7 +46,8 @@ export async function fetchWithTimeout(url: string, options: RequestInit = {}, t
 export function providerHttpError(response: Response, providerId: string): ProviderError {
   const retryAfter = response.headers.get('Retry-After')
   const seconds = retryAfter ? Number(retryAfter) : Number.NaN
-  const retryAt = Number.isFinite(seconds) ? Date.now() + seconds * 1000 : undefined
+  const retryDate = retryAfter && !Number.isFinite(seconds) ? Date.parse(retryAfter) : Number.NaN
+  const retryAt = Number.isFinite(seconds) ? Date.now() + seconds * 1000 : Number.isFinite(retryDate) ? retryDate : undefined
   if (response.status === 429) return new ProviderError('Rate limit reached', providerId, true, 429, retryAt)
   return new ProviderError(`Source returned ${response.status}`, providerId, response.status >= 500, response.status, retryAt)
 }
