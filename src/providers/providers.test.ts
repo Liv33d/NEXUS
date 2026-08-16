@@ -5,8 +5,15 @@ import { normalizeGdacs } from './gdacs'
 import { normalizeNws } from './nws'
 import { normalizeSwpc } from './swpc'
 import { normalizeVolcanoes } from './volcano'
+import { providerHttpError } from './types'
 
 describe('official provider normalization', () => {
+  it('honors both numeric and HTTP-date Retry-After headers', () => {
+    const retryDate = 'Sun, 16 Aug 2026 19:00:00 GMT'
+    expect(providerHttpError(new Response(null, { status: 429, headers: { 'Retry-After': retryDate } }), 'test').retryAt).toBe(Date.parse(retryDate))
+    expect((providerHttpError(new Response(null, { status: 429, headers: { 'Retry-After': '30' } }), 'test').retryAt ?? 0) - Date.now()).toBeGreaterThan(29_000)
+  })
+
   it('normalizes GDACS impact alerts without presenting them as local warnings', () => {
     const [signal] = normalizeGdacs({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:[-82.46,27.95] }, properties:{ eventid:42, episodeid:3, eventtype:'TC', name:'Example Cyclone', alertlevel:'Orange', alertscore:2.1, fromdate:'2026-08-15T12:00:00Z', todate:'2026-08-18T12:00:00Z', country:'United States', url:{ details:'https://www.gdacs.org/report.aspx?eventid=42' } } }] }, Date.parse('2026-08-16T00:00:00Z'))
     expect(signal?.source.provider).toBe('gdacs')
