@@ -80,6 +80,8 @@ export interface Discovery {
   relationships: Relationship[]
   status: 'new' | 'watching' | 'saved' | 'dismissed'
   tags: string[]
+  savedAt?: number
+  notes?: string
 }
 
 export interface ProviderStatus {

@@ -10,24 +10,23 @@
 - Open‑Meteo Observer weather, air-quality, and daylight context
 - Provider retry/deduplication, cached fallback, and health control surface
 - NASA-textured globe and lazy MapLibre investigation map with clustering, alert polygons, and accessible no-WebGL fallback
-- Official NOAA radar replay and a bundled Natural Earth offline map fallback
-- User-controlled NOAA radar history replay with reduced-motion and visibility safeguards
+- Best-effort RainViewer radar frames with official NOAA/NWS U.S. fallback and a bundled Natural Earth offline map fallback
+- User-controlled recent radar animation with reduced-motion and visibility safeguards
 - Global GDACS impact alerts for cyclones, floods, volcanoes, droughts, and wildfires
 - Preserved, bounded NWS alert geometry and auditable investigation source lists
 - Bounded spatial-time candidate generation for mobile-safe correlation
 - H3 indexing, temporal windows, conservative relationships, Discoveries
-- IndexedDB retention, saved Cases, search, and permission-free Observer place selection
+- IndexedDB retention, durable Case notes and evidence export, deterministic command search, and permission-free saved Observer places
+- Global Signal replay, contextual Lens presets, recovery UI, and production PWA icons
 - Unit tests and GitHub Actions verification
 
 ## Next
 
-1. Replace permanent Earth controls with contextual Search and Lens sheets.
-2. Build the federated Camera Registry, health checker, clustering, and Portal experience.
-3. Add USGS volcano/HVO camera, NOAA buoy/BuoyCAM, NHC cyclone, and USGS water providers.
-4. Build transparent per-H3 temporal baselines, component scores, and “What changed?” explanations.
-5. Add timestamp- and footprint-aware GOES/Himawari geostationary imagery.
-6. Move FIRMS normalization and candidate generation into Web Workers before adding dense sources.
-7. Add IODA outage, Launch Library 2, selected CelesTrak orbit, and bounded aviation-weather modules.
-8. Add replay snapshots, saved Observer locations, Case notes, and portable provenance export.
-9. Add focused entity graph with bounded progressive expansion.
-10. Complete accessibility, battery, storage-management, and mobile performance audits.
+1. Build the federated Camera Registry, health checker, clustering, and consent-aware Portal experience.
+2. Add USGS volcano/HVO camera, NOAA buoy/BuoyCAM, NHC cyclone, and USGS water providers.
+3. Build transparent per-H3 temporal baselines, component scores, and “What changed?” explanations.
+4. Add timestamp- and footprint-aware GOES/Himawari geostationary imagery.
+5. Move FIRMS normalization and candidate generation into Web Workers before adding dense sources.
+6. Add IODA outage, Launch Library 2, selected CelesTrak orbit, and bounded aviation-weather modules.
+7. Add focused entity graph with bounded progressive expansion.
+8. Continue accessibility, battery, storage-management, and mobile performance audits on real devices.

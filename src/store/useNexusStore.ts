@@ -30,11 +30,14 @@ interface NexusState {
   selectDiscovery(id?: string): void
   setGlobeReady(ready: boolean): void
   toggleLayer(type: SignalType): void
+  setLayers(types: SignalType[]): void
   setDemoMode(enabled: boolean): Promise<void>
   setFirmsKey(key: string): Promise<void>
   initialize(): Promise<void>
   refresh(): Promise<void>
   saveDiscovery(id: string): Promise<void>
+  updateCaseNotes(id: string, notes: string): Promise<void>
+  removeCase(id: string): Promise<void>
   eraseLocalData(): Promise<void>
   surprise(): Discovery | Signal | undefined
 }
@@ -77,6 +80,12 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   setGlobeReady: (globeReady) => set({ globeReady }),
   toggleLayer: (type) => set((state) => {
     const layerVisibility = { ...state.layerVisibility, [type]: !state.layerVisibility[type] }
+    void db.settings.put({ key: 'layers', value: layerVisibility }).catch(() => undefined)
+    return { layerVisibility }
+  }),
+  setLayers: (types) => set((state) => {
+    const enabled = new Set(types)
+    const layerVisibility = Object.fromEntries(Object.keys(state.layerVisibility).map((type) => [type, enabled.has(type as SignalType)])) as Record<SignalType, boolean>
     void db.settings.put({ key: 'layers', value: layerVisibility }).catch(() => undefined)
     return { layerVisibility }
   }),
@@ -165,15 +174,27 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   saveDiscovery: async (id) => {
     const discovery = get().discoveries.find((item) => item.id === id)
     if (!discovery) return
-    const saved = { ...discovery, status: 'saved' as const }
+    const saved = { ...discovery, status: 'saved' as const, savedAt: discovery.savedAt ?? Date.now(), notes: discovery.notes ?? '' }
     try { await db.discoveries.put(saved) } catch { /* Keep the case for this session. */ }
     set((state) => ({ discoveries: state.discoveries.map((item) => item.id === id ? saved : item) }))
+  },
+  updateCaseNotes: async (id, notes) => {
+    const discovery = get().discoveries.find((item) => item.id === id && item.status === 'saved')
+    if (!discovery) return
+    const updated = { ...discovery, notes: notes.slice(0, 10_000) }
+    try { await db.discoveries.put(updated) } catch { /* Keep notes for this session. */ }
+    set((state) => ({ discoveries: state.discoveries.map((item) => item.id === id ? updated : item) }))
+  },
+  removeCase: async (id) => {
+    try { await db.discoveries.delete(id) } catch { /* Storage may be unavailable. */ }
+    const liveIds = new Set(buildDiscoveries(get().signals).map((item) => item.id))
+    set((state) => ({ discoveries: state.discoveries.flatMap((item) => item.id !== id ? [item] : liveIds.has(id) ? [{ ...item, status: 'new' as const, savedAt: undefined, notes: undefined }] : []) }))
   },
   eraseLocalData: async () => {
     activeRefresh?.abort()
     try { await eraseDatabase() } catch { /* Storage may already be unavailable. */ }
     try {
-      for (const key of ['nexus:radar', 'nexus:satellite', 'nexus:lighting', 'nexus:performance', 'nexus:autoRotate', 'nexus:atmosphere', 'nexus:labels', 'nexus:mapTheme']) localStorage.removeItem(key)
+      for (const key of ['nexus:radar', 'nexus:satellite', 'nexus:lighting', 'nexus:performance', 'nexus:autoRotate', 'nexus:atmosphere', 'nexus:labels', 'nexus:mapTheme', 'nexus:observerPlaces']) localStorage.removeItem(key)
     } catch { /* Private browsing may deny localStorage access. */ }
     recentSurprises.length = 0
     set({
