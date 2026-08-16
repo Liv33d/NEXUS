@@ -64,7 +64,7 @@ export function worldGridGeoJSON(): FeatureCollection<LineString> {
   return { type: 'FeatureCollection', features }
 }
 
-const NOAA_RADAR_BASE = 'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/ImageServer/exportImage?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image'
+const NOAA_RADAR_EXPORT = 'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity/MapServer/export'
 export const RADAR_FRAME_STEP_MS = 10 * 60_000
 
 export function radarFrames(reference = Date.now(), count = 10): number[] {
@@ -73,9 +73,32 @@ export function radarFrames(reference = Date.now(), count = 10): number[] {
   return Array.from({ length: safeCount }, (_, index) => latest - (safeCount - index - 1) * RADAR_FRAME_STEP_MS)
 }
 
-export function noaaRadarTiles(timestamp = radarFrames(Date.now(), 1)[0]!) {
-  return `${NOAA_RADAR_BASE}&time=${timestamp}`
+/**
+ * Returns a single, georeferenced equirectangular radar image. The previous
+ * implementation exposed an ArcGIS bbox placeholder to a renderer that never
+ * substituted it, so every request failed. NOAA marks this service as current
+ * (not time enabled), therefore the rounded cache token is only used to refresh
+ * the image at the provider's documented five-minute cadence.
+ */
+export function noaaRadarImage(reference = Date.now(), width = 2048, height = 1024) {
+  const cacheToken = Math.floor(reference / (5 * 60_000))
+  const params = new URLSearchParams({
+    bbox: '-180,-90,180,90',
+    bboxSR: '4326',
+    imageSR: '4326',
+    size: `${Math.min(4096, Math.max(256, width))},${Math.min(4096, Math.max(128, height))}`,
+    dpi: '96',
+    format: 'png32',
+    transparent: 'true',
+    layers: 'show:3',
+    f: 'image',
+    v: String(cacheToken),
+  })
+  return `${NOAA_RADAR_EXPORT}?${params}`
 }
+
+/** @deprecated Use noaaRadarImage. Retained for cached callers during PWA upgrades. */
+export const noaaRadarTiles = noaaRadarImage
 
 export function previousUtcDate(reference = Date.now()) {
   return new Date(reference - 86_400_000).toISOString().slice(0, 10)
@@ -88,7 +111,7 @@ export function nasaTrueColorTiles(reference = Date.now()) {
 export const environmentalLayers = {
   radar: {
     label: 'NOAA/NWS MRMS base reflectivity',
-    freshness: 'Four-hour time-enabled service; approximately 5-minute source updates',
+    freshness: 'Current quality-controlled composite; approximately 5-minute source updates',
     coverage: 'United States and nearby radar domains',
     attribution: 'Radar: NOAA/NWS MRMS',
   },

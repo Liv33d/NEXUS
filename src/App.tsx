@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { Activity, Clock3, Globe2, Layers3, LoaderCircle, Map, RefreshCw, Search, X } from 'lucide-react'
+import { Activity, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, Map, RefreshCw, Search, X } from 'lucide-react'
 import { BottomNav, TopBar } from './components/Chrome'
 import { CasesPage, DiscoverPage, ObserverPage, SearchPanel, SettingsPage, SurpriseButton } from './components/Pages'
 import { SignalSheet } from './components/SignalSheet'
@@ -34,6 +34,9 @@ export default function App() {
   const [webGLAvailable] = useState(supportsWebGL)
   const [visualMode, setVisualMode] = useState<'globe' | 'map'>(() => supportsWebGL() ? 'globe' : 'map')
   const [activePanel, setActivePanel] = useState<'search' | 'layers' | 'time'>()
+  const [radarEnabled, setRadarEnabled] = useState(() => {
+    try { return localStorage.getItem('nexus:radar') === 'true' } catch { return false }
+  })
   const visibleSignals = selectVisibleSignals(store)
   const selectedSignal = store.signals.find((signal) => signal.id === store.selectedSignalId)
   const liveSourceCount = Object.values(store.statuses).filter((status) => status.state === 'live').length
@@ -53,10 +56,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    try { localStorage.setItem('nexus:radar', String(radarEnabled)) } catch { /* private storage may be unavailable */ }
+  }, [radarEnabled])
+
   const earthContent = useMemo(() => (
     <>
-      {visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading onboard atlas</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} onSelect={(signal) => store.selectSignal(signal.id)}/></Suspense> : !webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={(signal) => store.selectSignal(signal.id)}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
-        <GlobeView signals={visibleSignals} selected={selectedSignal} onSelect={(signal) => store.selectSignal(signal.id)} onReady={() => store.setGlobeReady(true)}/>
+      {visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading onboard atlas</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} onSelect={(signal) => store.selectSignal(signal.id)}/></Suspense> : !webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={(signal) => store.selectSignal(signal.id)}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
+        <GlobeView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} onSelect={(signal) => store.selectSignal(signal.id)} onReady={() => store.setGlobeReady(true)}/>
       </Suspense>} 
       <div className="earth-overlay">
         <button className={`world-pulse ${leadDiscovery ? `level-${leadDiscovery.level}` : ''}`} onClick={() => leadDiscovery && store.selectDiscovery(leadDiscovery.id)} disabled={!leadDiscovery}>
@@ -73,11 +80,11 @@ export default function App() {
         {!webGLAvailable && <div className="compatibility-notice" role="status">Accessible signal mode · WebGL 2 unavailable</div>}
         <div className="earth-bottom"><SurpriseButton onClick={() => { const result = store.surprise(); if (!result) return; if ('signalIds' in result) { const discovery = result as Discovery; store.selectDiscovery(discovery.id) } else { store.selectSignal((result as Signal).id) } }}/></div>
       </div>
-      {activePanel && <div className="command-scrim" onClick={() => setActivePanel(undefined)}><section className="command-sheet" role="dialog" aria-modal="true" aria-label={`${activePanel} controls`} onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><header><div><span className="eyebrow">EARTH COMMAND</span><h2>{activePanel === 'search' ? 'Find anywhere' : activePanel === 'layers' ? 'Signal lens' : 'Time horizon'}</h2></div><button onClick={() => setActivePanel(undefined)} aria-label="Close controls"><X/></button></header>{activePanel === 'search' && <><SearchPanel signals={store.signals} onSelect={(signal) => { store.selectSignal(signal.id); setActivePanel(undefined) }}/><p className="control-note">Search current evidence, source names, places, and recognized entities.</p></>}{activePanel === 'layers' && <><div className="lens-summary"><strong>{activeLayerCount}</strong><span>active signal layers</span></div><div className="lens-grid">{earthLayerOptions.map((layer) => { const count = store.signals.filter((signal) => signal.type === layer.type).length; return <button key={layer.type} className={store.layerVisibility[layer.type] ? 'active' : ''} onClick={() => store.toggleLayer(layer.type)} aria-pressed={store.layerVisibility[layer.type]}><i className={`type-dot ${layer.type}`}/><span><strong>{layer.label}</strong><small>{count} available</small></span><b>{store.layerVisibility[layer.type] ? 'ON' : 'OFF'}</b></button> })}</div><p className="control-note">Lenses filter the visual field; they never delete locally cached evidence.</p></>}{activePanel === 'time' && <><div className="time-panel"><TimeControl value={store.timeWindow} onChange={(window) => { store.setTimeWindow(window); setActivePanel(undefined) }}/></div><p className="control-note">Choose the evidence horizon. Provider requests and cached results are bounded to this window.</p></>}</section></div>}
+      {activePanel && <div className="command-scrim" onClick={() => setActivePanel(undefined)}><section className="command-sheet" role="dialog" aria-modal="true" aria-label={`${activePanel} controls`} onClick={(event) => event.stopPropagation()}><div className="sheet-handle"/><header><div><span className="eyebrow">EARTH COMMAND</span><h2>{activePanel === 'search' ? 'Find anywhere' : activePanel === 'layers' ? 'Signal lens' : 'Time horizon'}</h2></div><button onClick={() => setActivePanel(undefined)} aria-label="Close controls"><X/></button></header>{activePanel === 'search' && <><SearchPanel signals={store.signals} onSelect={(signal) => { store.selectSignal(signal.id); setActivePanel(undefined) }}/><p className="control-note">Search current evidence, source names, places, and recognized entities.</p></>}{activePanel === 'layers' && <><button className={`environment-lens ${radarEnabled ? 'active' : ''}`} onClick={() => setRadarEnabled((enabled) => !enabled)} aria-pressed={radarEnabled}><CloudRain/><span><strong>Live weather radar</strong><small>NOAA MRMS · US domains · 5 min</small></span><b>{radarEnabled ? 'ON' : 'OFF'}</b></button><div className="lens-summary"><strong>{activeLayerCount}</strong><span>active signal layers</span></div><div className="lens-grid">{earthLayerOptions.map((layer) => { const count = store.signals.filter((signal) => signal.type === layer.type).length; return <button key={layer.type} className={store.layerVisibility[layer.type] ? 'active' : ''} onClick={() => store.toggleLayer(layer.type)} aria-pressed={store.layerVisibility[layer.type]}><i className={`type-dot ${layer.type}`}/><span><strong>{layer.label}</strong><small>{count} available</small></span><b>{store.layerVisibility[layer.type] ? 'ON' : 'OFF'}</b></button> })}</div><p className="control-note">Radar is authoritative current reflectivity—not a forecast. Signal lenses never delete locally cached evidence.</p></>}{activePanel === 'time' && <><div className="time-panel"><TimeControl value={store.timeWindow} onChange={(window) => { store.setTimeWindow(window); setActivePanel(undefined) }}/></div><p className="control-note">Choose the evidence horizon. Provider requests and cached results are bounded to this window.</p></>}</section></div>}
       {visualMode === 'globe' && !store.globeReady && <div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}
       {selectedSignal && <SignalSheet signal={selectedSignal} onClose={() => store.selectSignal(undefined)}/>} 
     </>
-  ), [activeLayerCount, activePanel, leadDiscovery, liveSourceCount, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable])
+  ), [activeLayerCount, activePanel, leadDiscovery, liveSourceCount, radarEnabled, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable])
 
   return (
     <div className="app-shell">
