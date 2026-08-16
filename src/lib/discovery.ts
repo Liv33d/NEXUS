@@ -111,8 +111,12 @@ export function buildDiscoveries(signals: Signal[], now = Date.now()): Discovery
     const members = recent.filter((signal) => ids.has(signal.id))
     const memberRelationships = relationships.filter((relationship) => ids.has(relationship.sourceSignalId) && ids.has(relationship.targetSignalId))
     const sourceDiversity = new Set(members.map((signal) => signal.source.provider)).size
+    const typeDiversity = new Set(members.map((signal) => signal.type)).size
     const averageSeverity = members.reduce((sum, signal) => sum + (signal.severity ?? 20), 0) / members.length
-    const score = Math.round(clamp(averageSeverity * 0.55 + Math.min(members.length * 6, 24) + Math.min(sourceDiversity * 8, 24)))
+    const maximumSeverity = Math.max(...members.map((signal) => signal.severity ?? 20))
+    const evidenceWeight = Math.min(Math.log2(members.length + 1) * 7, 21)
+    const diversityWeight = Math.max(0, sourceDiversity - 1) * 12 + Math.max(0, typeDiversity - 1) * 5
+    const score = Math.round(clamp(averageSeverity * 0.38 + maximumSeverity * 0.28 + evidenceWeight + diversityWeight))
     const center = weightedCenter(members.flatMap((signal) => signal.location ? [signal.location] : []))
     const types = [...new Set(members.map((signal) => signal.type))]
     return {
@@ -129,5 +133,12 @@ export function buildDiscoveries(signals: Signal[], now = Date.now()): Discovery
       status: 'new' as const,
       tags: types,
     }
-  }).sort((a, b) => b.score - a.score)
+  }).filter((discovery) => {
+    const members = recent.filter((signal) => discovery.signalIds.includes(signal.id))
+    const maximumSeverity = Math.max(...members.map((signal) => signal.severity ?? 0))
+    const sourceDiversity = new Set(members.map((signal) => signal.source.provider)).size
+    // A feed item is not automatically a discovery. Promote only major
+    // single events, meaningful clusters, or genuine cross-source convergence.
+    return maximumSeverity >= 80 || members.length >= 3 || sourceDiversity >= 2
+  }).sort((a, b) => b.score - a.score).slice(0, 12)
 }
