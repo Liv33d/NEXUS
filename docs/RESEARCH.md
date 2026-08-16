@@ -13,6 +13,8 @@
 | [opengeos/vite-maplibre-react](https://github.com/opengeos/vite-maplibre-react) | React 19, Vite, MapLibre, and GitHub Pages | Studied lazy map setup and static deployment structure | None | MIT |
 | [OpenFreeMap](https://github.com/hyperknot/openfreemap) | Free vector basemap delivery | Dark MapLibre style with required OpenMapTiles/OpenStreetMap attribution | No code copied; hosted style consumed | MIT code; underlying OpenStreetMap data requires attribution |
 | [vasturiano/three-globe](https://github.com/vasturiano/three-globe) | Globe texture and terrain presentation | Reused the example topology and night-sky assets with a separately sourced official NASA Earth texture | Two example image assets | MIT repository; NASA imagery is U.S. government source material |
+| [IFRCGo/GCDB](https://github.com/IFRCGo/GCDB) | Operational GDACS normalization | Studied Search API field handling and event/episode identity; implemented an independent bounded TypeScript adapter | No code copied | GPL project was research-only; no code reuse |
+| [nasa-gibs/worldview](https://github.com/nasa-gibs/worldview) | Geostationary layer catalog and temporal UI | Confirmed GOES East/West, Himawari, and EUMETSAT layer identifiers and studied time-aware layer organization | No code copied | Apache-2.0; research only |
 
 Official USGS guidance recommends real-time GeoJSON feeds for automated display applications, so the first live adapter uses those feeds rather than catalog searches.
 
@@ -25,5 +27,7 @@ Official-source research also established these constraints:
 - Open‑Meteo provides no-key non-commercial access with documented request limits; NEXUS uses it only on demand for Observer context.
 - AviationWeather documents a 100-request/minute limit and explicitly disallows browser CORS, so it is not wired directly into the static PWA.
 - NOAA's official radar MapServer exposes MRMS/WSR-88D base reflectivity suitable for projected transparent overlays and reports an approximately five-minute update cadence.
+- NOAA also publishes a time-enabled MRMS ImageServer with a moving four-hour window. NEXUS uses explicit observation timestamps for an opt-in replay rather than downloading a permanent animation.
 - NASA EOSDIS GIBS publishes keyless WMTS/WMS satellite imagery. Stable daily MODIS true color is used now; geostationary GOES/Himawari layers can later support ten-minute animation with careful timestamp discovery and bounded caching.
 - RainViewer's public weather-map API was investigated but rejected as a core source because current personal/educational restrictions and service-transition history make the official NOAA/NASA combination a more durable default.
+- GDACS is a United Nations–European Commission cooperation framework, not a national warning authority. Its value is global impact screening; NEXUS therefore preserves its alert level while using cautious copy and independent-source labeling.

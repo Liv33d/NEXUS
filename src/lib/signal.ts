@@ -1,8 +1,19 @@
 import { latLngToCell } from 'h3-js'
 import { z } from 'zod'
 import { signalTypes, type Signal } from '../types/signal'
+import { sanitizeAreaGeometry } from './geospatial'
 
 const safeUrl = z.string().url().refine((url) => ['https:', 'http:'].includes(new URL(url).protocol))
+const signalGeometry = z.custom<GeoJSON.Geometry>((value) => {
+  if (!value || typeof value !== 'object' || !('type' in value) || !('coordinates' in value)) return false
+  if (value.type === 'Point') {
+    const coordinates = value.coordinates
+    return Array.isArray(coordinates) && coordinates.length >= 2 && coordinates.length <= 3
+      && coordinates.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))
+      && Math.abs(coordinates[0]) <= 180 && Math.abs(coordinates[1]) <= 90
+  }
+  return Boolean(sanitizeAreaGeometry(value as GeoJSON.Geometry))
+}, 'Geometry must be a bounded Point, Polygon, or MultiPolygon with valid longitude/latitude coordinates')
 
 export const signalSchema = z.object({
   id: z.string().min(1).max(240),
@@ -26,6 +37,7 @@ export const signalSchema = z.object({
     accuracy: z.number().nonnegative().optional(),
     h3Index: z.string().optional(),
   }).optional(),
+  geometry: signalGeometry.optional(),
   magnitude: z.number().finite().optional(),
   severity: z.number().min(0).max(100).optional(),
   confidence: z.number().min(0).max(1).optional(),
