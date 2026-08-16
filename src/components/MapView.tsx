@@ -13,6 +13,7 @@ interface Props {
   onSelect(signal: Signal): void
   radarEnabled?: boolean
   satelliteEnabled?: boolean
+  mapTheme?: 'dark' | 'street'
 }
 
 type WorldFeature = Feature<Polygon | MultiPolygon>
@@ -134,7 +135,7 @@ export default function MapView(props: Props) {
   const [mode, setMode] = useState<'detail' | 'atlas'>(() => navigator.onLine ? 'detail' : 'atlas')
   const fallback = useCallback(() => setMode('atlas'), [])
   return <>
-    {mode === 'detail' ? <ConnectedMapView {...props} onFallback={fallback}/> : <AtlasMapView {...props}/>} 
+    {mode === 'detail' ? <ConnectedMapView key={props.mapTheme ?? 'dark'} {...props} onFallback={fallback}/> : <AtlasMapView {...props}/>} 
     <div className="map-mode-switch" role="group" aria-label="Map detail mode">
       <button className={mode === 'detail' ? 'active' : ''} onClick={() => setMode('detail')}><strong>DETAIL</strong><small>connected</small></button>
       <button className={mode === 'atlas' ? 'active' : ''} onClick={() => setMode('atlas')}><strong>ATLAS</strong><small>offline</small></button>
