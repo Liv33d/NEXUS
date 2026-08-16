@@ -106,6 +106,17 @@ export default function App() {
           <button className={activePanel === 'layers' ? 'active' : ''} onClick={() => setActivePanel(activePanel === 'layers' ? undefined : 'layers')}><Layers3/><span>Lens</span></button>
           <button className={activePanel === 'time' ? 'active' : ''} onClick={() => setActivePanel(activePanel === 'time' ? undefined : 'time')}><Clock3/><span>{store.timeWindow}</span></button>
         </div>
+        {visualMode === 'globe' && <div className="globe-quick-lenses" aria-label="Globe appearance controls">
+          <div className="quick-lighting" role="group" aria-label="Earth lighting">
+            <button className={lightingMode === 'live' ? 'active' : ''} onClick={() => setLightingMode('live')} aria-pressed={lightingMode === 'live'}><Globe2/><span>Live</span></button>
+            <button className={lightingMode === 'day' ? 'active' : ''} onClick={() => setLightingMode('day')} aria-pressed={lightingMode === 'day'}><SunMedium/><span>Day</span></button>
+            <button className={lightingMode === 'night' ? 'active' : ''} onClick={() => setLightingMode('night')} aria-pressed={lightingMode === 'night'}><Moon/><span>Night</span></button>
+          </div>
+          <div className="quick-imagery" role="group" aria-label="Live environmental imagery">
+            <button className={radarEnabled ? 'active' : ''} onClick={() => setRadarEnabled((enabled) => !enabled)} aria-pressed={radarEnabled}><CloudRain/><span>Radar</span></button>
+            <button className={satelliteEnabled ? 'active' : ''} onClick={() => setSatelliteEnabled((enabled) => !enabled)} aria-pressed={satelliteEnabled}><Satellite/><span>Clouds</span></button>
+          </div>
+        </div>}
         <div className="view-toggle"><button className={visualMode === 'globe' ? 'active' : ''} onClick={() => setVisualMode('globe')} aria-label={webGLAvailable ? 'Globe view' : 'Globe view unavailable on this device'} disabled={!webGLAvailable} title={webGLAvailable ? 'Globe view' : 'WebGL unavailable'}><Globe2/></button><button className={visualMode === 'map' ? 'active' : ''} onClick={() => setVisualMode('map')} aria-label="Map view"><Map/></button><button onClick={() => void store.refresh()} aria-label="Refresh sources"><RefreshCw className={store.isRefreshing ? 'spin' : ''}/></button></div>
         {!webGLAvailable && <div className="compatibility-notice" role="status">Accessible signal mode · WebGL 2 unavailable</div>}
         <div className="earth-bottom"><SurpriseButton onClick={() => { const result = store.surprise(); if (!result) return; if ('signalIds' in result) { const discovery = result as Discovery; store.selectDiscovery(discovery.id) } else { store.selectSignal((result as Signal).id) } }}/></div>

@@ -1,10 +1,11 @@
 import { LocateFixed, Minus, Plus } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson'
 import { ATLAS_HEIGHT as HEIGHT, ATLAS_WIDTH as WIDTH, atlasGeometryPath, atlasProject, prioritizeAtlasSignals } from '../lib/atlas'
 import { sanitizeAreaGeometry } from '../lib/geospatial'
 import { noaaGeoColorImage, noaaRadarImage } from '../lib/mapLayers'
 import type { Signal } from '../types/signal'
+import ConnectedMapView from './ConnectedMapView'
 
 interface Props {
   signals: Signal[]
@@ -25,7 +26,7 @@ const colors: Record<Signal['type'], string> = {
   'space-weather': '#d6a4ff', media: '#f2da87', environment: '#74d9a1', infrastructure: '#c7d0d0',
 }
 
-export default function MapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false }: Props) {
+function AtlasMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const gesture = useRef<{ distance?: number; camera: Camera }>({ camera: initialCamera })
@@ -127,4 +128,16 @@ export default function MapView({ signals, selected, onSelect, radarEnabled = fa
     <div className="atlas-status"><span>{radarEnabled ? radarStatus === 'live' ? 'NOAA RADAR · LIVE' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING RADAR' : satelliteEnabled ? satelliteStatus === 'live' ? 'NOAA GEOCOLOR · LATEST' : satelliteStatus === 'error' ? 'SATELLITE UNAVAILABLE' : 'ACQUIRING SATELLITE' : 'ONBOARD ATLAS'}</span><small>{radarEnabled ? 'MRMS · 5 min · US domains' : satelliteEnabled ? 'GOES East/West · 10–15 min' : `${points.length} prioritized · ${signals.length} available`}</small></div>
     <div className="atlas-controls" role="group" aria-label="Map controls"><button onClick={(event) => { event.stopPropagation(); zoom(1.55) }} aria-label="Zoom in"><Plus/></button><button onClick={(event) => { event.stopPropagation(); zoom(1 / 1.55) }} aria-label="Zoom out"><Minus/></button><button onClick={(event) => { event.stopPropagation(); setCamera(initialCamera) }} aria-label="Show whole world"><LocateFixed/></button></div>
   </div>
+}
+
+export default function MapView(props: Props) {
+  const [mode, setMode] = useState<'detail' | 'atlas'>(() => navigator.onLine ? 'detail' : 'atlas')
+  const fallback = useCallback(() => setMode('atlas'), [])
+  return <>
+    {mode === 'detail' ? <ConnectedMapView {...props} onFallback={fallback}/> : <AtlasMapView {...props}/>} 
+    <div className="map-mode-switch" role="group" aria-label="Map detail mode">
+      <button className={mode === 'detail' ? 'active' : ''} onClick={() => setMode('detail')}><strong>DETAIL</strong><small>connected</small></button>
+      <button className={mode === 'atlas' ? 'active' : ''} onClick={() => setMode('atlas')}><strong>ATLAS</strong><small>offline</small></button>
+    </div>
+  </>
 }

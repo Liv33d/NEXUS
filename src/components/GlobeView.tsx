@@ -62,7 +62,10 @@ function createEarthMaterial() {
         float light=sin(surfaceLat)*sin(sunLat)+cos(surfaceLat)*cos(sunLat)*cos(surfaceLon-sunLon);
         float daylight=lightingMode>1.5?0.0:(lightingMode>.5?1.0:smoothstep(-.14,.16,light));
         vec4 day=texture2D(dayTexture,vUv);vec4 night=texture2D(nightTexture,vUv);
-        vec3 color=mix(night.rgb*vec3(.46,.58,.72),day.rgb,daylight);
+        vec3 nightTerrain=day.rgb*vec3(.035,.055,.09);
+        vec3 cityLights=night.rgb*vec3(1.28,1.12,.82)*1.55;
+        vec3 nightWorld=nightTerrain+cityLights;
+        vec3 color=mix(nightWorld,day.rgb,daylight);
         gl_FragColor=vec4(color,1.0);
       }`,
   })
