@@ -12,11 +12,6 @@ interface Props {
   onSelect(signal: Signal): void
 }
 
-const signalColor = ['match', ['get', 'type'],
-  'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8',
-  'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0',
-] as const
-
 export default function MapView({ signals, selected, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
@@ -65,13 +60,13 @@ export default function MapView({ signals, selected, onSelect }: Props) {
       map.addSource('nexus-radar', { type: 'raster', tiles: [NOAA_RADAR_TILES], tileSize: 256, attribution: environmentalLayers.radar.attribution })
       map.addLayer({ id: 'nexus-radar', type: 'raster', source: 'nexus-radar', paint: { 'raster-opacity': .66, 'raster-fade-duration': 180 } }, firstLabel)
       map.addSource('nexus-areas', { type: 'geojson', data: signalAreasGeoJSON(signalsRef.current) })
-      map.addLayer({ id: 'nexus-area-fill', type: 'fill', source: 'nexus-areas', paint: { 'fill-color': signalColor, 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 1, .08, 7, .2] } })
-      map.addLayer({ id: 'nexus-area-line', type: 'line', source: 'nexus-areas', paint: { 'line-color': signalColor, 'line-opacity': .82, 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 1, 9, 2.5] } })
+      map.addLayer({ id: 'nexus-area-fill', type: 'fill', source: 'nexus-areas', paint: { 'fill-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 1, .08, 7, .2] } })
+      map.addLayer({ id: 'nexus-area-line', type: 'line', source: 'nexus-areas', paint: { 'line-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'line-opacity': .82, 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 1, 9, 2.5] } })
       map.addSource('nexus-points', { type: 'geojson', data: signalPointsGeoJSON(signalsRef.current), cluster: true, clusterMaxZoom: 8, clusterRadius: 54, clusterProperties: { maxSeverity: ['max', ['get', 'severity']] } })
       map.addLayer({ id: 'nexus-heat', type: 'heatmap', source: 'nexus-points', maxzoom: 4.5, paint: { 'heatmap-weight': ['interpolate', ['linear'], ['get', 'severity'], 0, .08, 100, 1], 'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, .35, 5, 1.05], 'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 8, 5, 28], 'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 2, .34, 5, 0] } })
       map.addLayer({ id: 'nexus-clusters', type: 'circle', source: 'nexus-points', filter: ['has', 'point_count'], paint: { 'circle-color': ['step', ['get', 'maxSeverity'], '#356e6b', 41, '#2f8993', 61, '#c48146', 81, '#c9574e'], 'circle-radius': ['step', ['get', 'point_count'], 11, 10, 15, 50, 20, 200, 25], 'circle-stroke-width': 1.5, 'circle-stroke-color': 'rgba(235,255,252,.72)', 'circle-opacity': .9 } })
       map.addLayer({ id: 'nexus-cluster-count', type: 'symbol', source: 'nexus-points', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 10 }, paint: { 'text-color': '#f4ffff' } })
-      map.addLayer({ id: 'nexus-signals', type: 'circle', source: 'nexus-points', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': signalColor, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, ['interpolate', ['linear'], ['get', 'severity'], 0, 2.5, 100, 5], 10, ['interpolate', ['linear'], ['get', 'severity'], 0, 5, 100, 10]], 'circle-stroke-width': 1.2, 'circle-stroke-color': 'rgba(255,255,255,.84)', 'circle-opacity': ['match', ['get', 'freshness'], 'cached', .48, 'delayed', .62, .9] } })
+      map.addLayer({ id: 'nexus-signals', type: 'circle', source: 'nexus-points', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, ['interpolate', ['linear'], ['get', 'severity'], 0, 2.5, 100, 5], 10, ['interpolate', ['linear'], ['get', 'severity'], 0, 5, 100, 10]], 'circle-stroke-width': 1.2, 'circle-stroke-color': 'rgba(255,255,255,.84)', 'circle-opacity': ['match', ['get', 'freshness'], 'cached', .48, 'delayed', .62, .9] } })
       map.addLayer({ id: 'nexus-selected', type: 'circle', source: 'nexus-points', filter: ['==', ['get', 'id'], ''], paint: { 'circle-radius': 16, 'circle-color': 'rgba(143,245,232,.12)', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#8ff5e8', 'circle-blur': .15 } })
 
       map.on('click', 'nexus-signals', (event: MapLayerMouseEvent) => {
