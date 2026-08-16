@@ -55,9 +55,9 @@ export default function App() {
 
   const earthContent = useMemo(() => (
     <>
-      {!webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={(signal) => store.selectSignal(signal.id)}/> : visualMode === 'globe' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
+      {visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading onboard atlas</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} onSelect={(signal) => store.selectSignal(signal.id)}/></Suspense> : !webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={(signal) => store.selectSignal(signal.id)}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
         <GlobeView signals={visibleSignals} selected={selectedSignal} onSelect={(signal) => store.selectSignal(signal.id)} onReady={() => store.setGlobeReady(true)}/>
-      </Suspense> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading geographic engine</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} onSelect={(signal) => store.selectSignal(signal.id)}/></Suspense>} 
+      </Suspense>} 
       <div className="earth-overlay">
         <button className={`world-pulse ${leadDiscovery ? `level-${leadDiscovery.level}` : ''}`} onClick={() => leadDiscovery && store.selectDiscovery(leadDiscovery.id)} disabled={!leadDiscovery}>
           <span><Activity/> WORLD PULSE <i>{significantCount ? `${significantCount} significant` : 'nominal'}</i></span>

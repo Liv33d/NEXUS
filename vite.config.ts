@@ -60,15 +60,6 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /^https:\/\/tiles\.openfreemap\.org\//,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'nexus-map-tiles',
-              expiration: { maxEntries: 220, maxAgeSeconds: 604800 },
-              cacheableResponse: { statuses: [0, 200] }
-            }
-          },
-          {
             urlPattern: /^https:\/\/mapservices\.weather\.noaa\.gov\//,
             handler: 'StaleWhileRevalidate',
             options: {
@@ -98,7 +89,6 @@ export default defineConfig({
       output: {
         ...(singleFilePreview ? { inlineDynamicImports: true } : { manualChunks: {
           globe: ['react-globe.gl', 'three'],
-          map: ['maplibre-gl'],
           storage: ['dexie'],
           spatial: ['h3-js']
         } })
