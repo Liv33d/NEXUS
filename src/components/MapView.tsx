@@ -15,7 +15,7 @@ interface Props {
 const signalColor = ['match', ['get', 'type'],
   'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8',
   'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0',
-]
+] as const
 
 export default function MapView({ signals, selected, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
