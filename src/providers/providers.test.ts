@@ -4,6 +4,7 @@ import { normalizeFirmsCsv } from './firms'
 import { normalizeGdacs } from './gdacs'
 import { normalizeNws } from './nws'
 import { normalizeSwpc } from './swpc'
+import { normalizeVolcanoes } from './volcano'
 
 describe('official provider normalization', () => {
   it('normalizes GDACS impact alerts without presenting them as local warnings', () => {
@@ -49,5 +50,14 @@ describe('official provider normalization', () => {
     expect(signal?.attributes.fireRadiativePowerMw).toBe(44.6)
     expect(signal?.confidence).toBe(.94)
     expect(signal?.provenance[0]?.description).toContain('thermal detection')
+  })
+
+  it('keeps only elevated official USGS volcano states', () => {
+    const feature = (name: string, alertLevel: string, colorCode: string) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [-155.29, 19.42] }, properties: { volcanoName: name, vnum: name, volcanoCd: name, volcanoUrl: 'https://www.usgs.gov/volcanoes/test', volcanoImage: '', obs: 'hvo', region: 'Hawaii', noticeSynopsis: `${name} status`, noticeUrl: 'https://volcanoes.usgs.gov/hans2/view/notice/test', alertLevel, colorCode, alertDate: '2026-08-16 12:00:00', colorDate: '2026-08-16 12:00:00', nvewsThreat: 'Very High Threat' } })
+    const signals = normalizeVolcanoes({ type: 'FeatureCollection', features: [feature('Elevated', 'WATCH', 'ORANGE'), feature('Routine', 'NORMAL', 'GREEN')] }, Date.parse('2026-08-16T12:05:00Z'))
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.title).toContain('Volcano Watch')
+    expect(signals[0]?.severity).toBe(78)
+    expect(signals[0]?.provenance[0]?.label).toBe('OFFICIAL_SOURCE')
   })
 })

@@ -3,8 +3,6 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 
 type MapStyle = Exclude<Parameters<MapLibreMap['setStyle']>[0], string | null>
 
-export const OPEN_FREE_MAP_STYLE = 'https://tiles.openfreemap.org/styles/dark'
-
 /**
  * A zero-network geographic base used while the detailed vector style loads.
  * The source is Natural Earth 1:110m country geometry bundled with the app.
@@ -23,14 +21,14 @@ export function fallbackMapStyle(assetBase = './'): MapStyle {
       },
     },
     layers: [
-      { id: 'nexus-ocean', type: 'background', paint: { 'background-color': '#020607' } },
+      { id: 'nexus-ocean', type: 'background', paint: { 'background-color': '#010708' } },
       {
         id: 'nexus-land-shadow',
         type: 'fill',
         source: 'nexus-natural-earth',
         paint: {
-          'fill-color': '#0a1415',
-          'fill-outline-color': 'rgba(117, 173, 170, 0.24)',
+          'fill-color': '#112326',
+          'fill-outline-color': 'rgba(147, 211, 207, 0.58)',
         },
       },
       {
@@ -38,9 +36,9 @@ export function fallbackMapStyle(assetBase = './'): MapStyle {
         type: 'line',
         source: 'nexus-natural-earth',
         paint: {
-          'line-color': 'rgba(136, 183, 180, 0.24)',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 0.8, 0.42, 6, 0.9],
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 0.8, 0.58, 5, 0.28],
+          'line-color': 'rgba(137, 190, 188, 0.46)',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 0.2, 0.58, 6, 1],
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 0.2, 0.82, 5, 0.38],
         },
       },
     ],
