@@ -116,7 +116,21 @@ export function buildDiscoveries(signals: Signal[], now = Date.now()): Discovery
     const maximumSeverity = Math.max(...members.map((signal) => signal.severity ?? 20))
     const evidenceWeight = Math.min(Math.log2(members.length + 1) * 7, 21)
     const diversityWeight = Math.max(0, sourceDiversity - 1) * 12 + Math.max(0, typeDiversity - 1) * 5
-    const score = Math.round(clamp(averageSeverity * 0.38 + maximumSeverity * 0.28 + evidenceWeight + diversityWeight))
+    const rawComponents = {
+      typicalSeverity: averageSeverity * 0.38,
+      peakSeverity: maximumSeverity * 0.28,
+      evidence: evidenceWeight,
+      diversity: diversityWeight,
+    }
+    const rawScore = Object.values(rawComponents).reduce((sum, value) => sum + value, 0)
+    const score = Math.round(clamp(rawScore))
+    const componentScale = rawScore > 100 ? 100 / rawScore : 1
+    const scoreComponents = {
+      typicalSeverity: Math.round(rawComponents.typicalSeverity * componentScale),
+      peakSeverity: Math.round(rawComponents.peakSeverity * componentScale),
+      evidence: Math.round(rawComponents.evidence * componentScale),
+      diversity: Math.round(rawComponents.diversity * componentScale),
+    }
     const center = weightedCenter(members.flatMap((signal) => signal.location ? [signal.location] : []))
     const types = [...new Set(members.map((signal) => signal.type))]
     return {
@@ -125,6 +139,7 @@ export function buildDiscoveries(signals: Signal[], now = Date.now()): Discovery
       title: discoveryName(members),
       description: `${members.length} observable signal${members.length === 1 ? '' : 's'} across ${sourceDiversity} source${sourceDiversity === 1 ? '' : 's'}. Correlation indicates proximity, not causation.`,
       score,
+      scoreComponents,
       level: severityLabel(score),
       center,
       signalIds: [...ids],
