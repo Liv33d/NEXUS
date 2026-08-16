@@ -62,7 +62,7 @@ flowchart TD
 | GDACS | Live/delayed | Keyless global cyclone, flood, volcano, drought, and wildfire impact alerts |
 | NOAA SWPC | Live | Global NOAA R/S/G space-weather scales |
 | NASA FIRMS | Optional live/delayed | User-supplied free MAP key stored only on-device |
-| Open‑Meteo | On demand | Weather, wind, air quality, sunrise, and sunset in Observer Mode |
+| Open‑Meteo | On demand | Globally ranked place search plus weather, selectable units, air quality, and location-local sunrise/sunset in Observer Mode |
 | RainViewer + NOAA/NWS MRMS | Live overlay | Latest global best-effort radar in Detail Map; official U.S. composite fallback and globe context |
 | NOAA/NESDIS GeoColor | Live overlay | Latest merged GOES-East/West observed cloud imagery |
 | NEXUS Demo Network | Built in | Deterministic, isolated replacement mode for exploration and testing |
