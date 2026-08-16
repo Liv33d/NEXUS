@@ -11,6 +11,36 @@ const weatherSchema = z.object({
 })
 
 const airSchema = z.object({ current: z.object({ time: z.string(), us_aqi: z.number().nullable(), pm2_5: z.number().nullable() }) })
+const geocodingSchema = z.object({ results: z.array(z.object({
+  id: z.number(), name: z.string(), latitude: z.number(), longitude: z.number(),
+  country: z.string().optional(), admin1: z.string().optional(), timezone: z.string().optional(),
+})).optional() })
+
+export interface ObserverPlace {
+  id: number
+  name: string
+  subtitle: string
+  latitude: number
+  longitude: number
+  timezone?: string
+}
+
+export async function searchObserverPlaces(query: string, signal?: AbortSignal): Promise<ObserverPlace[]> {
+  const normalized = query.trim()
+  if (normalized.length < 2) return []
+  const params = new URLSearchParams({ name: normalized, count: '6', language: navigator.language?.split('-')[0] || 'en', format: 'json' })
+  const response = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?${params}`, { signal }, 6500)
+  if (!response.ok) throw providerHttpError(response, 'open-meteo-geocoding')
+  const payload = geocodingSchema.parse(await response.json())
+  return (payload.results ?? []).map((place) => ({
+    id: place.id,
+    name: place.name,
+    subtitle: [place.admin1, place.country].filter(Boolean).join(', '),
+    latitude: place.latitude,
+    longitude: place.longitude,
+    timezone: place.timezone,
+  }))
+}
 
 export interface ObserverContext {
   temperature: number
