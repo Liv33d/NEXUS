@@ -14,12 +14,11 @@ interface Props {
   onSelect(signal: Signal): void
   radarEnabled?: boolean
   satelliteEnabled?: boolean
+  mapTheme?: 'dark' | 'street'
   onFallback(): void
 }
 
 type SignalProperties = { id: string; title: string; type: Signal['type']; severity: number }
-
-const DETAIL_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 
 function signalCollection(signals: Signal[]): FeatureCollection<Point, SignalProperties> {
   return {
@@ -44,7 +43,7 @@ function removeWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satell
   if (map.getSource(id)) map.removeSource(id)
 }
 
-export default function ConnectedMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false, onFallback }: Props) {
+export default function ConnectedMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', onFallback }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const signalsRef = useRef(signals)
@@ -61,7 +60,7 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
     const timeout = window.setTimeout(() => { if (!settled) onFallback() }, 14_000)
     const map = new MapLibreMap({
       container: hostRef.current,
-      style: DETAIL_STYLE,
+      style: `https://tiles.openfreemap.org/styles/${mapTheme === 'street' ? 'liberty' : 'dark'}`,
       center: [-20, 20], zoom: 1.35, minZoom: 0.75, maxZoom: 16,
       pitchWithRotate: false, dragRotate: false, touchPitch: false,
       attributionControl: {},
@@ -98,7 +97,7 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
       if (!settled && /style|source|worker|webgl/i.test(String(event.error?.message))) { settled = true; window.clearTimeout(timeout); onFallback() }
     })
     return () => { settled = true; window.clearTimeout(timeout); map.remove(); mapRef.current = null }
-  }, [onFallback])
+  }, [mapTheme, onFallback])
 
   useEffect(() => {
     const map = mapRef.current
@@ -130,7 +129,7 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
     if (!ready || !map) return
     removeWeatherSource(map, 'nexus-radar')
     removeWeatherSource(map, 'nexus-satellite')
-    if (satelliteEnabled) addWeatherSource(map, 'nexus-satellite', [noaaGeoColorTileTemplate()], .62)
+    if (satelliteEnabled) addWeatherSource(map, 'nexus-satellite', [noaaGeoColorTileTemplate()], .4)
     if (radarEnabled) addWeatherSource(map, 'nexus-radar', [globalRadar?.tile ?? noaaRadarTileTemplate()], .76, globalRadar ? 'Radar: RainViewer' : 'Radar: NOAA/NWS')
   }, [globalRadar, radarEnabled, ready, satelliteEnabled])
 
