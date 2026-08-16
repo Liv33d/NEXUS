@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { validateSignal } from '../lib/signal'
 import type { Signal } from '../types/signal'
-import { fetchWithTimeout, ProviderError, type SignalProvider, type SignalQueryContext } from './types'
+import { fetchWithTimeout, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
 
 const featureCollectionSchema = z.object({
   features: z.array(z.object({
@@ -49,12 +49,15 @@ export function normalizeUsgs(payload: unknown, retrievedAt = Date.now()): Signa
 export const usgsProvider: SignalProvider = {
   id: 'usgs',
   name: 'USGS Earthquakes',
+  description: 'Reviewed and automatic global earthquake detections.',
+  cadenceMs: 5 * 60000,
+  dataClass: 'official',
   async isAvailable() { return navigator.onLine },
   async fetchSignals(context: SignalQueryContext) {
     const hours = (context.until - context.since) / 3600000
     const feed = hours <= 1 ? 'all_hour' : hours <= 24 ? 'all_day' : 'all_week'
     const response = await fetchWithTimeout(`https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/${feed}.geojson`, { signal: context.signal }, 7000)
-    if (!response.ok) throw new ProviderError(`USGS returned ${response.status}`, 'usgs')
+    if (!response.ok) throw providerHttpError(response, 'usgs')
     return normalizeUsgs(await response.json())
   },
 }

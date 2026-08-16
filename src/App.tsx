@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { Activity, LoaderCircle } from 'lucide-react'
+import { Activity, Globe2, LoaderCircle, Map, RefreshCw } from 'lucide-react'
 import { BottomNav, TopBar } from './components/Chrome'
 import { CasesPage, DiscoverPage, ObserverPage, SearchPanel, SettingsPage, SurpriseButton } from './components/Pages'
 import { SignalSheet } from './components/SignalSheet'
 import { TimeControl } from './components/TimeControl'
+import { FlatMapView } from './components/FlatMapView'
 import { selectVisibleSignals, useNexusStore } from './store/useNexusStore'
 import type { Discovery, Signal } from './types/signal'
 
@@ -12,9 +13,10 @@ const GlobeView = lazy(() => import('./components/GlobeView'))
 export default function App() {
   const store = useNexusStore()
   const [online, setOnline] = useState(navigator.onLine)
+  const [visualMode, setVisualMode] = useState<'globe' | 'map'>('globe')
   const visibleSignals = selectVisibleSignals(store)
   const selectedSignal = store.signals.find((signal) => signal.id === store.selectedSignalId)
-  const liveCount = store.signals.filter((signal) => signal.source.freshness === 'live').length
+  const liveSourceCount = Object.values(store.statuses).filter((status) => status.state === 'live').length
   const significantCount = store.discoveries.filter((item) => item.score >= 61).length
 
   useEffect(() => {
@@ -31,18 +33,19 @@ export default function App() {
 
   const earthContent = useMemo(() => (
     <>
-      <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
+      {visualMode === 'globe' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
         <GlobeView signals={visibleSignals} selected={selectedSignal} onSelect={(signal) => store.selectSignal(signal.id)} onReady={() => store.setGlobeReady(true)}/>
-      </Suspense>
+      </Suspense> : <FlatMapView signals={visibleSignals} selected={selectedSignal} onSelect={(signal) => store.selectSignal(signal.id)}/>} 
       <div className="earth-overlay">
         <SearchPanel signals={store.signals} onSelect={(signal) => store.selectSignal(signal.id)}/>
-        <div className="earth-stats"><div><span>Visible signals</span><strong>{visibleSignals.length}</strong></div><div><span>Live sources</span><strong>{liveCount ? 1 : 0}<small>/ 2</small></strong></div><div><span>Significant</span><strong>{significantCount}</strong></div></div>
+        <div className="earth-toolbar"><div className="earth-stats"><div><span>Visible signals</span><strong>{visibleSignals.length}</strong></div><div><span>Live sources</span><strong>{liveSourceCount}<small>/ {Object.keys(store.statuses).length}</small></strong></div><div><span>Significant</span><strong>{significantCount}</strong></div></div><div className="view-toggle"><button className={visualMode === 'globe' ? 'active' : ''} onClick={() => setVisualMode('globe')} aria-label="Globe view"><Globe2/></button><button className={visualMode === 'map' ? 'active' : ''} onClick={() => setVisualMode('map')} aria-label="Map view"><Map/></button><button onClick={() => void store.refresh()} aria-label="Refresh sources"><RefreshCw className={store.isRefreshing ? 'spin' : ''}/></button></div></div>
+        <div className="provider-strip" aria-label="Provider health">{Object.values(store.statuses).map((status) => <span key={status.providerId} className={`provider-state ${status.state}`}><i/>{status.providerName?.replace('NOAA ', '').replace('NASA ', '') ?? status.providerId}</span>)}</div>
         <div className="earth-bottom"><SurpriseButton onClick={() => { const result = store.surprise(); if (!result) return; if ('signalIds' in result) { const discovery = result as Discovery; store.selectDiscovery(discovery.id) } else { store.selectSignal((result as Signal).id) } }}/><TimeControl value={store.timeWindow} onChange={store.setTimeWindow}/></div>
       </div>
-      {!store.globeReady && <div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}
+      {visualMode === 'globe' && !store.globeReady && <div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}
       {selectedSignal && <SignalSheet signal={selectedSignal} onClose={() => store.selectSignal(undefined)}/>} 
     </>
-  ), [liveCount, selectedSignal, significantCount, store, visibleSignals])
+  ), [liveSourceCount, selectedSignal, significantCount, store, visibleSignals, visualMode])
 
   return (
     <div className="app-shell">
@@ -51,7 +54,7 @@ export default function App() {
       {store.view === 'discover' && <DiscoverPage discoveries={store.discoveries} signals={store.signals} selectedId={store.selectedDiscoveryId} onOpen={(id) => store.selectDiscovery(id || undefined)} onSave={store.saveDiscovery}/>} 
       {store.view === 'cases' && <CasesPage discoveries={store.discoveries} onOpen={(id) => store.selectDiscovery(id)}/>} 
       {store.view === 'observer' && <ObserverPage signals={store.signals}/>} 
-      {store.view === 'settings' && <SettingsPage layers={store.layerVisibility} onToggle={store.toggleLayer}/>} 
+      {store.view === 'settings' && <SettingsPage layers={store.layerVisibility} statuses={store.statuses} demoMode={store.demoMode} firmsConfigured={store.firmsConfigured} onToggle={store.toggleLayer} onDemoMode={store.setDemoMode} onFirmsKey={store.setFirmsKey} onRefresh={store.refresh}/>} 
       {store.view !== 'settings' && <BottomNav view={store.view} onChange={store.setView}/>} 
       {store.view === 'settings' && <button className="settings-done" onClick={() => store.setView('earth')}>Done</button>}
       {!online && <div className="offline-banner"><Activity size={14}/> Viewing cached and demonstration data</div>}
