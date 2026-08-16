@@ -65,6 +65,7 @@ export function worldGridGeoJSON(): FeatureCollection<LineString> {
 }
 
 const NOAA_RADAR_EXPORT = 'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity/MapServer/export'
+const NOAA_GEOCOLOR_EXPORT = 'https://satellitemaps.nesdis.noaa.gov/arcgis/rest/services/MERGED_GeoColor/ImageServer/exportImage'
 export const RADAR_FRAME_STEP_MS = 10 * 60_000
 
 export function radarFrames(reference = Date.now(), count = 10): number[] {
@@ -100,6 +101,17 @@ export function noaaRadarImage(reference = Date.now(), width = 2048, height = 10
 /** @deprecated Use noaaRadarImage. Retained for cached callers during PWA upgrades. */
 export const noaaRadarTiles = noaaRadarImage
 
+/** Latest merged GOES-East/West GeoColor, reprojected by NOAA to WGS84. */
+export function noaaGeoColorImage(reference = Date.now(), width = 2048, height = 1024) {
+  const cacheToken = Math.floor(reference / (10 * 60_000))
+  const params = new URLSearchParams({
+    bbox: '-180,-90,180,90', bboxSR: '4326', imageSR: '4326',
+    size: `${Math.min(4096, Math.max(256, width))},${Math.min(4096, Math.max(128, height))}`,
+    format: 'png32', transparent: 'true', interpolation: 'RSP_BilinearInterpolation', f: 'image', v: String(cacheToken),
+  })
+  return `${NOAA_GEOCOLOR_EXPORT}?${params}`
+}
+
 export function previousUtcDate(reference = Date.now()) {
   return new Date(reference - 86_400_000).toISOString().slice(0, 10)
 }
@@ -116,9 +128,9 @@ export const environmentalLayers = {
     attribution: 'Radar: NOAA/NWS MRMS',
   },
   satellite: {
-    label: 'NASA MODIS Terra corrected-reflectance true color',
-    freshness: 'Previous completed UTC day',
-    coverage: 'Global where observations are available',
-    attribution: 'Imagery: NASA EOSDIS GIBS',
+    label: 'NOAA NESDIS merged GOES GeoColor',
+    freshness: 'Latest operational image; normally refreshed every 10–15 minutes',
+    coverage: 'GOES East and West domains, approximately 76°S to 76°N',
+    attribution: 'Imagery: NOAA/NESDIS/STAR',
   },
 } as const

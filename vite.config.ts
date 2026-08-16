@@ -11,7 +11,7 @@ export default defineConfig({
     VitePWA({
       disable: singleFilePreview,
       registerType: 'autoUpdate',
-      includeAssets: ['nexus-mark.svg', 'earth-blue-marble.jpg', 'earth-topology.png', 'night-sky.png'],
+      includeAssets: ['nexus-mark.svg', 'earth-blue-marble.jpg', 'earth-city-lights.jpg', 'earth-topology.png', 'night-sky.png'],
       manifest: {
         name: 'NEXUS — See the world connect',
         short_name: 'NEXUS',
@@ -65,6 +65,15 @@ export default defineConfig({
             options: {
               cacheName: 'nexus-radar-tiles',
               expiration: { maxEntries: 64, maxAgeSeconds: 1800 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/satellitemaps\.nesdis\.noaa\.gov\//,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'nexus-noaa-geocolor',
+              expiration: { maxEntries: 6, maxAgeSeconds: 1800 },
               cacheableResponse: { statuses: [0, 200] }
             }
           },

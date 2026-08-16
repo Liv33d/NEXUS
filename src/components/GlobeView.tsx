@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
 import { Mesh, MeshBasicMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, TextureLoader, Vector2 } from 'three'
-import { noaaRadarImage } from '../lib/mapLayers'
+import { noaaGeoColorImage, noaaRadarImage } from '../lib/mapLayers'
+import { subsolarPoint } from '../lib/solar'
 import type { Signal } from '../types/signal'
 
 interface Props {
@@ -11,6 +12,8 @@ interface Props {
   onReady(): void
   batterySaver?: boolean
   radarEnabled?: boolean
+  satelliteEnabled?: boolean
+  lightingMode?: 'live' | 'day' | 'night'
 }
 
 interface EarthLabel { name: string; lat: number; lng: number; kind: 'land' | 'water' | 'place' }
@@ -36,13 +39,6 @@ const typeColor: Record<Signal['type'], string> = {
   'space-weather': '#d6a4ff', media: '#f2da87', environment: '#74d9a1', infrastructure: '#c7d0d0',
 }
 
-function sunPosition(date = new Date()): [number, number] {
-  const start = Date.UTC(date.getUTCFullYear(), 0, 0)
-  const day = (date.getTime() - start) / 86_400_000
-  const utcHours = date.getUTCHours() + date.getUTCMinutes() / 60
-  return [(12 - utcHours) * 15, -23.44 * Math.cos((2 * Math.PI / 365.24) * (day + 10))]
-}
-
 function createEarthMaterial() {
   const loader = new TextureLoader().setCrossOrigin('anonymous')
   const dayTexture = loader.load(`${import.meta.env.BASE_URL}earth-blue-marble.jpg`)
@@ -52,34 +48,33 @@ function createEarthMaterial() {
   return new ShaderMaterial({
     uniforms: {
       dayTexture: { value: dayTexture }, nightTexture: { value: nightTexture },
-      sunPosition: { value: new Vector2(...sunPosition()) }, globeRotation: { value: new Vector2() },
+      sunPosition: { value: new Vector2() }, lightingMode: { value: 0 },
     },
-    vertexShader: `varying vec3 vNormal; varying vec2 vUv; void main(){vNormal=normalize(normalMatrix*normal);vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    vertexShader: `varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
     fragmentShader: `
       #define PI 3.141592653589793
-      uniform sampler2D dayTexture; uniform sampler2D nightTexture; uniform vec2 sunPosition; uniform vec2 globeRotation;
-      varying vec3 vNormal; varying vec2 vUv;
+      uniform sampler2D dayTexture; uniform sampler2D nightTexture; uniform vec2 sunPosition; uniform float lightingMode;
+      varying vec2 vUv;
       float rad(float value){return value*PI/180.0;}
-      vec3 sphereVector(vec2 c){float theta=rad(90.0-c.x);float phi=rad(90.0-c.y);return vec3(sin(phi)*cos(theta),cos(phi),sin(phi)*sin(theta));}
       void main(){
-        float lon=rad(globeRotation.x);float lat=-rad(globeRotation.y);
-        mat3 rotX=mat3(1,0,0,0,cos(lat),-sin(lat),0,sin(lat),cos(lat));
-        mat3 rotY=mat3(cos(lon),0,sin(lon),0,1,0,-sin(lon),0,cos(lon));
-        float light=dot(normalize(vNormal),normalize(rotX*rotY*sphereVector(sunPosition)));
+        float surfaceLon=(vUv.x*2.0-1.0)*PI;float surfaceLat=(vUv.y-.5)*PI;
+        float sunLon=rad(sunPosition.x);float sunLat=rad(sunPosition.y);
+        float light=sin(surfaceLat)*sin(sunLat)+cos(surfaceLat)*cos(sunLat)*cos(surfaceLon-sunLon);
+        float daylight=lightingMode>1.5?0.0:(lightingMode>.5?1.0:smoothstep(-.14,.16,light));
         vec4 day=texture2D(dayTexture,vUv);vec4 night=texture2D(nightTexture,vUv);
-        vec3 dusk=mix(night.rgb*vec3(.45,.60,.76),day.rgb,smoothstep(-.17,.12,light));
-        float rim=pow(1.0-max(dot(normalize(vNormal),vec3(0.0,0.0,1.0)),0.0),3.0);
-        gl_FragColor=vec4(dusk+vec3(.02,.10,.12)*rim,1.0);
+        vec3 color=mix(night.rgb*vec3(.46,.58,.72),day.rgb,daylight);
+        gl_FragColor=vec4(color,1.0);
       }`,
   })
 }
 
-export default function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false }: Props) {
+export default function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live' }: Props) {
   const ref = useRef<GlobeMethods | undefined>(undefined)
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight })
   const [ready, setReady] = useState(false)
   const [viewBand, setViewBand] = useState<'world' | 'near'>('world')
   const [radarStatus, setRadarStatus] = useState<'loading' | 'live' | 'error'>('loading')
+  const [satelliteStatus, setSatelliteStatus] = useState<'loading' | 'live' | 'error'>('loading')
   const earthMaterial = useMemo(createEarthMaterial, [])
   const labels = viewBand === 'world' ? WORLD_LABELS : PLACE_LABELS
   const points = useMemo(() => signals.filter((signal) => signal.location).slice(0, batterySaver ? 350 : 1200), [signals, batterySaver])
@@ -99,6 +94,19 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
     earthMaterial.uniforms.nightTexture!.value.dispose()
     earthMaterial.dispose()
   }, [earthMaterial])
+
+  useEffect(() => {
+    const mode = lightingMode === 'day' ? 1 : lightingMode === 'night' ? 2 : 0
+    earthMaterial.uniforms.lightingMode!.value = mode
+    const updateSun = () => {
+      const point = subsolarPoint()
+      earthMaterial.uniforms.sunPosition!.value.set(point.longitude, point.latitude)
+    }
+    updateSun()
+    if (lightingMode !== 'live') return
+    const timer = window.setInterval(updateSun, 60_000)
+    return () => window.clearInterval(timer)
+  }, [earthMaterial, lightingMode])
 
   useEffect(() => {
     const controls = ref.current?.controls()
@@ -150,6 +158,28 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
     }
   }, [batterySaver, radarEnabled, ready])
 
+  useEffect(() => {
+    if (!ready || !satelliteEnabled || batterySaver) return
+    const globe = ref.current
+    if (!globe) return
+    let cancelled = false
+    let mesh: Mesh | undefined
+    setSatelliteStatus('loading')
+    const texture = new TextureLoader().setCrossOrigin('anonymous').load(noaaGeoColorImage(), (loaded) => {
+      if (cancelled) { loaded.dispose(); return }
+      loaded.colorSpace = SRGBColorSpace
+      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.003, 96, 64), new MeshBasicMaterial({ map: loaded, transparent: true, opacity: 0.72, depthWrite: false }))
+      mesh.renderOrder = 3
+      globe.scene().add(mesh)
+      setSatelliteStatus('live')
+    }, undefined, () => { if (!cancelled) setSatelliteStatus('error') })
+    return () => {
+      cancelled = true
+      if (mesh) { globe.scene().remove(mesh); mesh.geometry.dispose(); (mesh.material as MeshBasicMaterial).dispose() }
+      texture.dispose()
+    }
+  }, [batterySaver, ready, satelliteEnabled])
+
   return <div className="globe-stage" role="img" aria-label={`Interactive Earth showing ${points.length} visible signals`}>
     <Globe
       ref={ref} width={size.width} height={size.height} backgroundColor="rgba(0,0,0,0)" globeMaterial={earthMaterial}
@@ -164,8 +194,7 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
       ringsData={rings} ringLat={(item) => (item as Signal).location!.latitude} ringLng={(item) => (item as Signal).location!.longitude}
       ringColor={(item: object) => (item as Signal).id === selected?.id ? '#dffffa' : typeColor[(item as Signal).type]}
       ringMaxRadius={(item) => 1.1 + ((item as Signal).severity ?? 0) / 24} ringPropagationSpeed={batterySaver ? 0 : 0.55} ringRepeatPeriod={batterySaver ? Infinity : 1700}
-      onZoom={({ lng, lat, altitude }) => {
-        earthMaterial.uniforms.globeRotation!.value.set(lng, lat)
+      onZoom={({ altitude }) => {
         const next = altitude < 1.15 ? 'near' : 'world'
         setViewBand((current) => current === next ? current : next)
       }}
@@ -178,7 +207,10 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
         setReady(true); onReady()
       }}
     />
-    {radarEnabled && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED · BATTERY SAVER' : radarStatus === 'live' ? 'NOAA RADAR · 5 MIN' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
+    <div className="environment-status-stack">
+      {satelliteEnabled && <div className={`radar-provenance satellite ${satelliteStatus}`}><i/><span>{batterySaver ? 'SATELLITE PAUSED' : satelliteStatus === 'live' ? 'NOAA GEOCOLOR · LATEST' : satelliteStatus === 'error' ? 'SATELLITE UNAVAILABLE' : 'ACQUIRING SATELLITE'}</span></div>}
+      {radarEnabled && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED' : radarStatus === 'live' ? 'NOAA RADAR · 5 MIN' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
+    </div>
     <div className="globe-vignette" />
   </div>
 }
