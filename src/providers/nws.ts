@@ -105,8 +105,11 @@ export const nwsProvider: SignalProvider = {
   dataClass: 'official',
   async isAvailable() { return navigator.onLine },
   async fetchSignals(context: SignalQueryContext) {
-    const params = new URLSearchParams({ status: 'actual', message_type: 'alert' })
-    const response = await fetchWithTimeout(`https://api.weather.gov/alerts/active?${params}`, { signal: context.signal, headers: { 'User-Agent': 'NEXUS open-data PWA' } }, 9000)
+    // NEXUS is a situation-awareness surface, not an all-advisories directory.
+    // Filtering server-side keeps the mobile payload bounded (the unfiltered
+    // national feed can be many times larger) while retaining urgent hazards.
+    const params = new URLSearchParams({ status: 'actual', message_type: 'alert', severity: 'Severe,Extreme' })
+    const response = await fetchWithTimeout(`https://api.weather.gov/alerts/active?${params}`, { signal: context.signal, headers: { Accept: 'application/geo+json' } }, 18000)
     if (!response.ok) throw providerHttpError(response, 'nws')
     return normalizeNws(await response.json()).filter((signal) => !signal.endTime || signal.endTime >= context.since)
   },

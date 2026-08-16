@@ -33,7 +33,10 @@ describe('official provider normalization', () => {
   })
 
   it('creates global SWPC signals only for active NOAA scales', () => {
-    const signals = normalizeSwpc({ '0': { DateStamp: '2026-08-15', TimeStamp: '20:00:00', R: { Scale: '0', Text: 'none' }, S: { Scale: '1', Text: 'minor radiation storm' }, G: { Scale: '3', Text: 'strong geomagnetic storm' } } })
+    const signals = normalizeSwpc({
+      '0': { DateStamp: '2026-08-15', TimeStamp: '20:00:00', R: { Scale: '0', Text: 'none' }, S: { Scale: '1', Text: 'minor radiation storm' }, G: { Scale: '3', Text: 'strong geomagnetic storm' } },
+      '1': { DateStamp: '2026-08-16', TimeStamp: '00:00:00', R: { Scale: null, Text: null }, S: { Scale: null, Text: null }, G: { Scale: '0', Text: 'none' } },
+    })
     expect(signals.map((signal) => signal.title)).toEqual(['Solar radiation storm — S1', 'Geomagnetic storm — G3'])
     expect(signals.every((signal) => !signal.location)).toBe(true)
   })

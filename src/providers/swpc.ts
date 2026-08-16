@@ -3,7 +3,12 @@ import { validateSignal } from '../lib/signal'
 import type { Signal } from '../types/signal'
 import { fetchWithTimeout, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
 
-const scaleSchema = z.object({ Scale: z.union([z.string(), z.number()]), Text: z.string().optional() }).passthrough()
+// NOAA includes forecast rows whose scale and text are explicitly null. Parse
+// the complete official document, then derive Signals only from the current row.
+const scaleSchema = z.object({
+  Scale: z.union([z.string(), z.number()]).nullable(),
+  Text: z.string().nullable().optional(),
+}).passthrough()
 const scalesSchema = z.record(z.string(), z.object({
   DateStamp: z.string().optional(),
   TimeStamp: z.string().optional(),
