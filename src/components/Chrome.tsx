@@ -7,7 +7,7 @@ export function TopBar({ offline, demo, onSettings }: { offline: boolean; demo: 
     <header className="topbar">
       <div className="brand"><span className="brand-mark" /> <span>NEXUS</span></div>
       <div className="source-state" aria-live="polite">
-        {offline ? <><WifiOff size={12}/> OFFLINE DATA</> : demo ? <><Radar size={12}/> DEMO + LIVE</> : <><span className="live-dot"/> LIVE</>}
+        {offline ? <><WifiOff size={12}/> OFFLINE DATA</> : demo ? <><Radar size={12}/> DEMO DATA</> : <><span className="live-dot"/> LIVE</>}
       </div>
       <button className="icon-button" aria-label="Settings" onClick={onSettings}><Settings2 size={19}/></button>
     </header>
