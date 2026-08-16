@@ -2,11 +2,14 @@ import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const singleFilePreview = process.env.NEXUS_SINGLE_FILE === '1'
+
 export default defineConfig({
   base: './',
   plugins: [
     react(),
     VitePWA({
+      disable: singleFilePreview,
       registerType: 'autoUpdate',
       includeAssets: ['nexus-mark.svg', 'earth-texture.svg'],
       manifest: {
@@ -63,13 +66,14 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: false,
+    cssCodeSplit: !singleFilePreview,
     rollupOptions: {
       output: {
-        manualChunks: {
+        ...(singleFilePreview ? { inlineDynamicImports: true } : { manualChunks: {
           globe: ['react-globe.gl', 'three'],
           storage: ['dexie'],
           spatial: ['h3-js']
-        }
+        } })
       }
     }
   },

@@ -22,6 +22,14 @@ npm test
 npm run build
 ```
 
+For a single self-contained HTML file suitable for temporary phone previews:
+
+```bash
+npm run build:phone-preview
+```
+
+The output is `dist-preview/nexus-phone-preview.html`. The installable PWA still requires normal HTTPS hosting so service workers and Home Screen installation work correctly.
+
 ## Architecture
 
 ```mermaid
