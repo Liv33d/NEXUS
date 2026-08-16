@@ -14,8 +14,10 @@ NEXUS is a static, local-first Progressive Web App. The core application require
 ## Visualization layers
 
 - The globe uses bundled NASA Earth imagery so its foundational appearance remains available offline.
+- Globe illumination is calculated per geographic surface coordinate from the current subsolar latitude/longitude. Camera rotation never influences day/night classification. Users may override live illumination with explicit full-day or full-night presentation modes.
 - The 2D investigation view uses a bundled Natural Earth SVG atlas with touch pan/pinch, zoom-aware signal thinning, and sanitized alert polygons, so geography remains available offline and on constrained iPhones.
 - Environmental raster overlays are independent of the Signal pipeline because they are visual context, not discrete claims. Each carries visible attribution and an honest freshness label. Current NOAA radar is a bounded EPSG:4326 export; no historical frames are implied by the non-time-enabled service.
+- Current merged GOES-East/West GeoColor is requested directly from NOAA/NESDIS as a transparent WGS84 export and placed on a separate bounded raster sphere. It is an observation layer, not a global forecast.
 - Browsers without WebGL 2 receive a coordinate-precise, keyboard-accessible Signal list instead of a geographically misleading illustration.
 
 Provider failure is isolated. The application continues with cached data and its deterministic Demo Mode.
@@ -23,6 +25,8 @@ Provider failure is isolated. The application continues with cached data and its
 ## Performance
 
 The globe and atlas renderers are separate lazy chunks. Visible globe points are bounded, the atlas semantically thins point density by zoom, filtering occurs before rendering, high-frequency sources receive shorter retention, WebGL pauses while hidden, device pixel ratio is capped, and polling only runs while the document is visible. Radar is opt-in and pauses under battery saver. Raster caches use strict entry and age limits. Future high-volume adapters should normalize and H3-index in Web Workers.
+
+Ambient Earth is explicitly user-initiated. It requests the browser Screen Wake Lock where supported, fades chrome after inactivity, restores controls on touch, and releases the lock when the user leaves Earth or the mode is disabled.
 
 Geometry is validated at the normalized Signal boundary. Only bounded Point, Polygon, and MultiPolygon geometry with finite WGS84 coordinates is retained; area rings must close and the total coordinate count is capped before either renderer receives the payload.
 

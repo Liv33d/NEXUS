@@ -69,6 +69,14 @@
 - Freshness: NEXUS requests the previous completed UTC day to avoid showing partially populated global imagery and labels it delayed.
 - Semantics: this is visual observation context, not a weather forecast and not a discrete Signal.
 
+## NOAA/NESDIS merged GOES GeoColor
+
+- Endpoint: official `MERGED_GeoColor` ArcGIS ImageServer bounded image export.
+- Authentication: none.
+- Coverage: merged GOES-East and GOES-West domains, approximately 76°S–76°N; it is not represented as complete global coverage.
+- Freshness: latest operational imagery, normally refreshed every 10–15 minutes.
+- Semantics: opt-in observed satellite context. The overlay carries visible NOAA attribution/freshness and remains separate from normalized Signals.
+
 ## Demo Network
 
 Deterministic representative data guarantees an explorable product and stable tests without external availability. Demo Mode replaces live data rather than silently mixing with it, and every record is visibly marked `DEMO DATA`.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fallbackMapStyle, nasaTrueColorTiles, noaaRadarImage, previousUtcDate, radarFrames, worldGridGeoJSON } from './mapLayers'
+import { fallbackMapStyle, nasaTrueColorTiles, noaaGeoColorImage, noaaRadarImage, previousUtcDate, radarFrames, worldGridGeoJSON } from './mapLayers'
 
 describe('environmental layer endpoints', () => {
   it('uses the previous completed UTC day for global imagery', () => {
@@ -19,6 +19,14 @@ describe('environmental layer endpoints', () => {
     expect(url.searchParams.get('imageSR')).toBe('4326')
     expect(url.searchParams.get('size')).toBe('2048,1024')
     expect(url.href).not.toContain('{bbox')
+  })
+
+  it('requests current NOAA GeoColor in the same geographic projection', () => {
+    const url = new URL(noaaGeoColorImage(Date.parse('2026-08-16T15:00:00Z')))
+    expect(url.pathname).toContain('/MERGED_GeoColor/ImageServer/exportImage')
+    expect(url.searchParams.get('bboxSR')).toBe('4326')
+    expect(url.searchParams.get('imageSR')).toBe('4326')
+    expect(url.searchParams.get('transparent')).toBe('true')
   })
 
   it('ships a georeferenced zero-network map fallback', () => {
