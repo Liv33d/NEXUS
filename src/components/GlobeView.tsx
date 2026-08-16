@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
-import { Mesh, MeshBasicMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, TextureLoader, Vector2 } from 'three'
+import { AdditiveBlending, Mesh, MeshBasicMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, TextureLoader, Vector2 } from 'three'
 import { noaaGeoColorImage, noaaRadarImage } from '../lib/mapLayers'
 import { subsolarPoint } from '../lib/solar'
 import type { Signal } from '../types/signal'
@@ -14,6 +14,10 @@ interface Props {
   radarEnabled?: boolean
   satelliteEnabled?: boolean
   lightingMode?: 'live' | 'day' | 'night'
+  autoRotate?: boolean
+  atmosphereEnabled?: boolean
+  labelsEnabled?: boolean
+  qualityMode?: 'automatic' | 'quality' | 'battery'
 }
 
 interface EarthLabel { name: string; lat: number; lng: number; kind: 'land' | 'water' | 'place' }
@@ -62,16 +66,20 @@ function createEarthMaterial() {
         float light=sin(surfaceLat)*sin(sunLat)+cos(surfaceLat)*cos(sunLat)*cos(surfaceLon-sunLon);
         float daylight=lightingMode>1.5?0.0:(lightingMode>.5?1.0:smoothstep(-.14,.16,light));
         vec4 day=texture2D(dayTexture,vUv);vec4 night=texture2D(nightTexture,vUv);
-        vec3 nightTerrain=day.rgb*vec3(.035,.055,.09);
+        vec3 dayWorld=pow(max(day.rgb,vec3(0.0)),vec3(.72))*1.22;
+        dayWorld=mix(vec3(dot(dayWorld,vec3(.2126,.7152,.0722))),dayWorld,1.12);
+        dayWorld=clamp(dayWorld,0.0,1.0);
+        vec3 nightTerrain=pow(max(day.rgb,vec3(0.0)),vec3(.86))*vec3(.055,.075,.12);
         vec3 cityLights=night.rgb*vec3(1.28,1.12,.82)*1.55;
         vec3 nightWorld=nightTerrain+cityLights;
-        vec3 color=mix(nightWorld,day.rgb,daylight);
+        vec3 color=mix(nightWorld,dayWorld,daylight);
+        color+=dayWorld*max(light,0.0)*daylight*.08;
         gl_FragColor=vec4(color,1.0);
       }`,
   })
 }
 
-export default function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live' }: Props) {
+export default function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic' }: Props) {
   const ref = useRef<GlobeMethods | undefined>(undefined)
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight })
   const [ready, setReady] = useState(false)
@@ -91,6 +99,12 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
   }, [])
+
+  useEffect(() => {
+    if (!ready) return
+    const pixelRatioCap = qualityMode === 'battery' ? 1 : qualityMode === 'quality' ? 2 : 1.5
+    ref.current?.renderer().setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap))
+  }, [qualityMode, ready])
 
   useEffect(() => () => {
     earthMaterial.uniforms.dayTexture!.value.dispose()
@@ -114,7 +128,7 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
   useEffect(() => {
     const controls = ref.current?.controls()
     if (!controls) return
-    controls.autoRotate = !batterySaver && !selected && document.visibilityState === 'visible'
+    controls.autoRotate = autoRotate && !batterySaver && !selected && document.visibilityState === 'visible'
     controls.autoRotateSpeed = 0.2
     controls.enablePan = false
     controls.enableDamping = true
@@ -123,18 +137,18 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
     controls.zoomSpeed = 0.72
     controls.minDistance = 104
     controls.maxDistance = 440
-  }, [batterySaver, selected, ready])
+  }, [autoRotate, batterySaver, selected, ready])
 
   useEffect(() => {
     const handleVisibility = () => {
       const globe = ref.current
       if (!globe) return
       if (document.visibilityState === 'hidden') globe.pauseAnimation()
-      else { globe.resumeAnimation(); const controls = globe.controls(); if (controls) controls.autoRotate = !batterySaver && !selected }
+      else { globe.resumeAnimation(); const controls = globe.controls(); if (controls) controls.autoRotate = autoRotate && !batterySaver && !selected }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [batterySaver, selected])
+  }, [autoRotate, batterySaver, selected])
 
   useEffect(() => {
     if (selected?.location) ref.current?.pointOfView({ lat: selected.location.latitude, lng: selected.location.longitude, altitude: 0.72 }, 1350)
@@ -171,7 +185,7 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
     const texture = new TextureLoader().setCrossOrigin('anonymous').load(noaaGeoColorImage(), (loaded) => {
       if (cancelled) { loaded.dispose(); return }
       loaded.colorSpace = SRGBColorSpace
-      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.003, 96, 64), new MeshBasicMaterial({ map: loaded, transparent: true, opacity: 0.72, depthWrite: false }))
+      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.003, 96, 64), new MeshBasicMaterial({ map: loaded, transparent: true, opacity: 0.34, depthWrite: false, blending: AdditiveBlending }))
       mesh.renderOrder = 3
       globe.scene().add(mesh)
       setSatelliteStatus('live')
@@ -186,8 +200,8 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
   return <div className="globe-stage" role="img" aria-label={`Interactive Earth showing ${points.length} visible signals`}>
     <Globe
       ref={ref} width={size.width} height={size.height} backgroundColor="rgba(0,0,0,0)" globeMaterial={earthMaterial}
-      backgroundImageUrl={`${import.meta.env.BASE_URL}night-sky.png`} showAtmosphere atmosphereColor="#8ae9ff" atmosphereAltitude={0.17}
-      labelsData={labels} labelLat={(item) => (item as EarthLabel).lat} labelLng={(item) => (item as EarthLabel).lng} labelText={(item) => (item as EarthLabel).name}
+      backgroundImageUrl={`${import.meta.env.BASE_URL}night-sky.png`} showAtmosphere={atmosphereEnabled} atmosphereColor="#9eefff" atmosphereAltitude={0.2}
+      labelsData={labelsEnabled ? labels : []} labelLat={(item) => (item as EarthLabel).lat} labelLng={(item) => (item as EarthLabel).lng} labelText={(item) => (item as EarthLabel).name}
       labelColor={(item) => (item as EarthLabel).kind === 'water' ? 'rgba(145,211,230,.82)' : 'rgba(245,251,250,.92)'}
       labelSize={(item) => (item as EarthLabel).kind === 'place' ? 0.22 : (item as EarthLabel).kind === 'water' ? 0.36 : 0.5}
       labelAltitude={0.013} labelIncludeDot={(item) => (item as EarthLabel).kind === 'place'} labelDotRadius={0.07} labelResolution={3} labelsTransitionDuration={280}
@@ -204,7 +218,8 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
       onGlobeReady={() => {
         const globe = ref.current
         const renderer = globe?.renderer()
-        renderer?.setPixelRatio(Math.min(window.devicePixelRatio || 1, batterySaver ? 1 : 1.75))
+        const pixelRatioCap = qualityMode === 'battery' ? 1 : qualityMode === 'quality' ? 2 : 1.5
+        renderer?.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap))
         if (renderer) renderer.outputColorSpace = SRGBColorSpace
         globe?.pointOfView({ lat: 18, lng: -45, altitude: 2.05 }, 900)
         setReady(true); onReady()
