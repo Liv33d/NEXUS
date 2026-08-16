@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, Map, MonitorUp, Moon, RefreshCw, Satellite, Search, SunMedium, X } from 'lucide-react'
 import { BottomNav, TopBar } from './components/Chrome'
-import { CasesPage, DiscoverPage, ObserverPage, SearchPanel, SettingsPage, SurpriseButton } from './components/Pages'
+import { CasesPage, DiscoverPage, ObserverPage, SearchPanel, SurpriseButton } from './components/Pages'
+import SettingsPage, { type MapTheme, type PerformanceMode } from './components/SettingsPage'
 import { SignalSheet } from './components/SignalSheet'
 import { TimeControl } from './components/TimeControl'
 import { AccessibleEarthFallback } from './components/AccessibleEarthFallback'
@@ -43,6 +44,13 @@ export default function App() {
   const [lightingMode, setLightingMode] = useState<'live' | 'day' | 'night'>(() => {
     try { const value = localStorage.getItem('nexus:lighting'); return value === 'day' || value === 'night' ? value : 'live' } catch { return 'live' }
   })
+  const [performanceMode, setPerformanceMode] = useState<PerformanceMode>(() => {
+    try { const value = localStorage.getItem('nexus:performance'); return value === 'quality' || value === 'battery' ? value : 'automatic' } catch { return 'automatic' }
+  })
+  const [autoRotate, setAutoRotate] = useState(() => { try { return localStorage.getItem('nexus:autoRotate') !== 'false' } catch { return true } })
+  const [atmosphere, setAtmosphere] = useState(() => { try { return localStorage.getItem('nexus:atmosphere') !== 'false' } catch { return true } })
+  const [labels, setLabels] = useState(() => { try { return localStorage.getItem('nexus:labels') !== 'false' } catch { return true } })
+  const [mapTheme, setMapTheme] = useState<MapTheme>(() => { try { return localStorage.getItem('nexus:mapTheme') === 'street' ? 'street' : 'dark' } catch { return 'dark' } })
   const [ambientMode, setAmbientMode] = useState(false)
   const [ambientIdle, setAmbientIdle] = useState(false)
   const wakeLock = useRef<WakeLockSentinel | null>(null)
@@ -75,6 +83,13 @@ export default function App() {
   }, [lightingMode, satelliteEnabled])
 
   useEffect(() => {
+    try {
+      localStorage.setItem('nexus:performance', performanceMode); localStorage.setItem('nexus:autoRotate', String(autoRotate))
+      localStorage.setItem('nexus:atmosphere', String(atmosphere)); localStorage.setItem('nexus:labels', String(labels)); localStorage.setItem('nexus:mapTheme', mapTheme)
+    } catch { /* private storage may be unavailable */ }
+  }, [atmosphere, autoRotate, labels, mapTheme, performanceMode])
+
+  useEffect(() => {
     if (!ambientActive) { setAmbientIdle(false); void wakeLock.current?.release(); wakeLock.current = null; return }
     let idleTimer = window.setTimeout(() => setAmbientIdle(true), 12_000)
     const wake = async () => {
@@ -92,8 +107,8 @@ export default function App() {
 
   const earthContent = useMemo(() => (
     <>
-      {visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading onboard atlas</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} onSelect={(signal) => store.selectSignal(signal.id)}/></Suspense> : !webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={(signal) => store.selectSignal(signal.id)}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
-        <GlobeView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} lightingMode={lightingMode} onSelect={(signal) => store.selectSignal(signal.id)} onReady={() => store.setGlobeReady(true)}/>
+      {visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading geographic detail</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} mapTheme={mapTheme} onSelect={(signal) => store.selectSignal(signal.id)}/></Suspense> : !webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={(signal) => store.selectSignal(signal.id)}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
+        <GlobeView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} lightingMode={lightingMode} batterySaver={performanceMode === 'battery'} qualityMode={performanceMode} autoRotate={autoRotate} atmosphereEnabled={atmosphere} labelsEnabled={labels} onSelect={(signal) => store.selectSignal(signal.id)} onReady={() => store.setGlobeReady(true)}/>
       </Suspense>} 
       <div className="earth-overlay">
         <button className={`world-pulse ${leadDiscovery ? `level-${leadDiscovery.level}` : ''}`} onClick={() => leadDiscovery && store.selectDiscovery(leadDiscovery.id)} disabled={!leadDiscovery}>
@@ -147,7 +162,7 @@ export default function App() {
       {visualMode === 'globe' && !store.globeReady && <div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}
       {selectedSignal && <SignalSheet signal={selectedSignal} onClose={() => store.selectSignal(undefined)}/>} 
     </>
-  ), [activeLayerCount, activePanel, ambientMode, leadDiscovery, lightingMode, liveSourceCount, radarEnabled, satelliteEnabled, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable])
+  ), [activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, performanceMode, radarEnabled, satelliteEnabled, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable])
 
   return (
     <div className={`app-shell ${ambientActive && ambientIdle ? 'ambient-idle' : ''}`}>
@@ -156,7 +171,7 @@ export default function App() {
       {store.view === 'discover' && <DiscoverPage discoveries={store.discoveries} signals={store.signals} selectedId={store.selectedDiscoveryId} onOpen={(id) => store.selectDiscovery(id || undefined)} onSave={store.saveDiscovery}/>} 
       {store.view === 'cases' && <CasesPage discoveries={store.discoveries} onOpen={(id) => store.selectDiscovery(id)}/>} 
       {store.view === 'observer' && <ObserverPage signals={store.signals}/>} 
-      {store.view === 'settings' && <SettingsPage layers={store.layerVisibility} statuses={store.statuses} demoMode={store.demoMode} firmsConfigured={store.firmsConfigured} onToggle={store.toggleLayer} onDemoMode={store.setDemoMode} onFirmsKey={store.setFirmsKey} onRefresh={store.refresh}/>} 
+      {store.view === 'settings' && <SettingsPage layers={store.layerVisibility} statuses={store.statuses} demoMode={store.demoMode} firmsConfigured={store.firmsConfigured} performanceMode={performanceMode} autoRotate={autoRotate} atmosphere={atmosphere} labels={labels} mapTheme={mapTheme} onToggle={store.toggleLayer} onDemoMode={store.setDemoMode} onFirmsKey={store.setFirmsKey} onRefresh={store.refresh} onPerformance={setPerformanceMode} onAutoRotate={setAutoRotate} onAtmosphere={setAtmosphere} onLabels={setLabels} onMapTheme={setMapTheme} onErase={async () => { await store.eraseLocalData(); setRadarEnabled(false); setSatelliteEnabled(false); setLightingMode('live'); setPerformanceMode('automatic'); setAutoRotate(true); setAtmosphere(true); setLabels(true); setMapTheme('dark') }}/>} 
       {store.view !== 'settings' && <BottomNav view={store.view} onChange={store.setView}/>} 
       {store.view === 'settings' && <button className="settings-done" onClick={() => store.setView('earth')}>Done</button>}
       {!online && <div className="offline-banner"><Activity size={14}/> Viewing cached and demonstration data</div>}
