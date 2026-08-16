@@ -85,6 +85,24 @@ export default defineConfig({
               expiration: { maxEntries: 120, maxAgeSeconds: 172800 },
               cacheableResponse: { statuses: [0, 200] }
             }
+          },
+          {
+            urlPattern: /^https:\/\/tiles\.openfreemap\.org\//,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'nexus-openfreemap',
+              expiration: { maxEntries: 180, maxAgeSeconds: 604800 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/(api|tilecache)\.rainviewer\.com\//,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'nexus-global-radar',
+              expiration: { maxEntries: 96, maxAgeSeconds: 7200 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
           }
         ]
       }

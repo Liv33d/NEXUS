@@ -112,6 +112,22 @@ export function noaaGeoColorImage(reference = Date.now(), width = 2048, height =
   return `${NOAA_GEOCOLOR_EXPORT}?${params}`
 }
 
+/**
+ * ArcGIS export endpoints can act as WMS-like raster tile sources when the
+ * renderer substitutes MapLibre's Web Mercator bbox token. This keeps weather
+ * pixels registered to the basemap instead of stretching one world image over
+ * the antimeridian.
+ */
+export function noaaRadarTileTemplate(reference = Date.now()) {
+  const cacheToken = Math.floor(reference / (5 * 60_000))
+  return `${NOAA_RADAR_EXPORT}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&dpi=96&format=png32&transparent=true&layers=show:3&f=image&v=${cacheToken}`
+}
+
+export function noaaGeoColorTileTemplate(reference = Date.now()) {
+  const cacheToken = Math.floor(reference / (10 * 60_000))
+  return `${NOAA_GEOCOLOR_EXPORT}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&interpolation=RSP_BilinearInterpolation&f=image&v=${cacheToken}`
+}
+
 export function previousUtcDate(reference = Date.now()) {
   return new Date(reference - 86_400_000).toISOString().slice(0, 10)
 }

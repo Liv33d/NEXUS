@@ -59,7 +59,22 @@
 - Authentication: none.
 - Coverage: CONUS and the other domains published by the service; empty pixels outside coverage are expected.
 - Freshness: the upstream mosaic is normally updated about every five minutes. The current service is not time-enabled, and NEXUS does not imply historical playback.
-- Storage: one short-lived transparent EPSG:4326 export is cached for resilience and aligned to both visual renderers.
+- Storage: short-lived transparent exports are cached for resilience. Detail Map requests EPSG:3857 tiles so imagery stays geographically registered; the globe uses the bounded geographic export.
+
+## RainViewer global radar
+
+- Endpoint: public Weather Maps timeline and radar tile API.
+- Authentication: none.
+- Coverage: best-effort composite coverage from more than 1,200 radars across 150+ countries; gaps remain possible.
+- Freshness: the latest published frame, normally refreshed every 5–10 minutes, is used only in connected Detail Map mode.
+- Terms: personal, educational, and small-community use with mandatory attribution; no SLA. This is an enhancement rather than a core dependency, and NOAA MRMS remains the automatic fallback.
+
+## OpenFreeMap basemap
+
+- Endpoint: hosted Liberty vector style and OpenMapTiles/OSM tiles.
+- Authentication: none; no registration or API key.
+- Use: connected high-detail map only, with clustered Signal layers and projected environmental imagery.
+- Resilience: a bundled Natural Earth atlas remains available as an explicit offline/failure mode.
 
 ## NASA EOSDIS GIBS imagery
 
@@ -83,4 +98,4 @@ Deterministic representative data guarantees an explorable product and stable te
 
 ## Adapter backlog
 
-GDELT must remain labeled as media activity. OpenSky must use viewport loading, strict rate awareness, and short retention. SatNOGS should add orbital context without implying authoritative satellite intent. AviationWeather is not used directly from the static browser client because its official service currently disallows CORS. RainViewer was evaluated but not selected as a core dependency because its current usage terms are narrower and long-term public API availability is less certain than the official NOAA and NASA services. NASA GOES/Himawari GeoColor layers are verified as available through GIBS, but sub-daily timestamp discovery and frame caching must be completed before they are presented as near-real-time.
+GDELT must remain labeled as media activity. OpenSky must use viewport loading, strict rate awareness, and short retention. SatNOGS should add orbital context without implying authoritative satellite intent. AviationWeather is not used directly from the static browser client because its official service currently disallows CORS. RainViewer is an optional best-effort connected overlay rather than a core source because its free terms are narrower than NEXUS's long-term product ambitions. NASA GOES/Himawari GeoColor layers are verified as available through GIBS, but sub-daily timestamp discovery and frame caching must be completed before they are presented as near-real-time.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fallbackMapStyle, nasaTrueColorTiles, noaaGeoColorImage, noaaRadarImage, previousUtcDate, radarFrames, worldGridGeoJSON } from './mapLayers'
+import { fallbackMapStyle, nasaTrueColorTiles, noaaGeoColorImage, noaaGeoColorTileTemplate, noaaRadarImage, noaaRadarTileTemplate, previousUtcDate, radarFrames, worldGridGeoJSON } from './mapLayers'
 
 describe('environmental layer endpoints', () => {
   it('uses the previous completed UTC day for global imagery', () => {
@@ -27,6 +27,15 @@ describe('environmental layer endpoints', () => {
     expect(url.searchParams.get('bboxSR')).toBe('4326')
     expect(url.searchParams.get('imageSR')).toBe('4326')
     expect(url.searchParams.get('transparent')).toBe('true')
+  })
+
+  it('keeps MapLibre bbox tokens intact for projected weather tiles', () => {
+    const radar = noaaRadarTileTemplate(Date.parse('2026-08-16T15:00:00Z'))
+    const satellite = noaaGeoColorTileTemplate(Date.parse('2026-08-16T15:00:00Z'))
+    expect(radar).toContain('bbox={bbox-epsg-3857}')
+    expect(radar).toContain('bboxSR=3857')
+    expect(satellite).toContain('bbox={bbox-epsg-3857}')
+    expect(satellite).toContain('imageSR=3857')
   })
 
   it('ships a georeferenced zero-network map fallback', () => {
