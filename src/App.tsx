@@ -5,6 +5,7 @@ import { CasesPage, DiscoverPage, ObserverPage, SearchPanel, SurpriseButton } fr
 import SettingsPage, { type MapTheme, type PerformanceMode } from './components/SettingsPage'
 import { SignalSheet } from './components/SignalSheet'
 import { TimeControl } from './components/TimeControl'
+import { ReplayControl } from './components/ReplayControl'
 import { AccessibleEarthFallback } from './components/AccessibleEarthFallback'
 import { selectVisibleSignals, useNexusStore } from './store/useNexusStore'
 import type { Discovery, Signal, SignalType } from './types/signal'
@@ -16,6 +17,13 @@ let cachedWebGLSupport: boolean | undefined
 const earthLayerOptions: Array<{ type: SignalType; label: string }> = [
   { type: 'earthquake', label: 'Seismic' }, { type: 'fire', label: 'Thermal' }, { type: 'weather', label: 'Weather' },
   { type: 'environment', label: 'Environment' }, { type: 'space-weather', label: 'Space weather' },
+]
+const lensPresets: Array<{ id: string; label: string; description: string; types: SignalType[] }> = [
+  { id: 'world', label: 'World', description: 'All verified live layers', types: ['earthquake', 'fire', 'weather', 'environment', 'space-weather'] },
+  { id: 'storm', label: 'Storm', description: 'Warnings and environmental events', types: ['weather', 'environment'] },
+  { id: 'fire', label: 'Fire', description: 'Thermal and air context', types: ['fire', 'environment'] },
+  { id: 'seismic', label: 'Seismic', description: 'Earthquakes and volcanoes', types: ['earthquake', 'environment'] },
+  { id: 'space', label: 'Space', description: 'Global space weather', types: ['space-weather', 'satellite'] },
 ]
 
 function supportsWebGL() {
@@ -52,10 +60,12 @@ export default function App() {
   const [labels, setLabels] = useState(() => { try { return localStorage.getItem('nexus:labels') !== 'false' } catch { return true } })
   const [mapTheme, setMapTheme] = useState<MapTheme>(() => { try { return localStorage.getItem('nexus:mapTheme') === 'street' ? 'street' : 'dark' } catch { return 'dark' } })
   const [ambientMode, setAmbientMode] = useState(false)
+  const [replayCutoff, setReplayCutoff] = useState<number>()
   const [ambientIdle, setAmbientIdle] = useState(false)
   const wakeLock = useRef<WakeLockSentinel | null>(null)
   const ambientActive = ambientMode && store.view === 'earth'
-  const visibleSignals = selectVisibleSignals(store)
+  const windowSignals = selectVisibleSignals(store)
+  const visibleSignals = replayCutoff ? windowSignals.filter((signal) => signal.timestamp <= replayCutoff) : windowSignals
   const selectedSignal = store.signals.find((signal) => signal.id === store.selectedSignalId)
   const liveSourceCount = Object.values(store.statuses).filter((status) => status.state === 'live').length
   const significantCount = store.discoveries.filter((item) => item.score >= 61).length
@@ -119,7 +129,7 @@ export default function App() {
         <div className="earth-command-rail" aria-label="Earth controls">
           <button className={activePanel === 'search' ? 'active' : ''} onClick={() => setActivePanel(activePanel === 'search' ? undefined : 'search')}><Search/><span>Find</span></button>
           <button className={activePanel === 'layers' ? 'active' : ''} onClick={() => setActivePanel(activePanel === 'layers' ? undefined : 'layers')}><Layers3/><span>Lens</span></button>
-          <button className={activePanel === 'time' ? 'active' : ''} onClick={() => setActivePanel(activePanel === 'time' ? undefined : 'time')}><Clock3/><span>{store.timeWindow}</span></button>
+          <button className={activePanel === 'time' ? 'active' : ''} onClick={() => setActivePanel(activePanel === 'time' ? undefined : 'time')}><Clock3/><span>{replayCutoff ? 'Replay' : store.timeWindow}</span></button>
         </div>
         {visualMode === 'globe' && <div className="globe-quick-lenses" aria-label="Globe appearance controls">
           <div className="quick-lighting" role="group" aria-label="Earth lighting">
@@ -142,6 +152,7 @@ export default function App() {
           <header><div><span className="eyebrow">EARTH COMMAND</span><h2>{activePanel === 'search' ? 'Find anywhere' : activePanel === 'layers' ? 'Earth lenses' : 'Time horizon'}</h2></div><button onClick={() => setActivePanel(undefined)} aria-label="Close controls"><X/></button></header>
           {activePanel === 'search' && <><SearchPanel signals={store.signals} onSelect={(signal) => { store.selectSignal(signal.id); setActivePanel(undefined) }}/><p className="control-note">Search current evidence, source names, places, and recognized entities.</p></>}
           {activePanel === 'layers' && <>
+            <div className="lens-presets" role="group" aria-label="Question-focused lenses">{lensPresets.map((lens) => <button key={lens.id} onClick={() => store.setLayers(lens.types)}><strong>{lens.label}</strong><small>{lens.description}</small></button>)}</div>
             <div className="lighting-control"><span>EARTH LIGHTING</span><div>
               <button className={lightingMode === 'live' ? 'active' : ''} onClick={() => setLightingMode('live')}><Globe2/>Live</button>
               <button className={lightingMode === 'day' ? 'active' : ''} onClick={() => setLightingMode('day')}><SunMedium/>Day</button>
@@ -156,25 +167,26 @@ export default function App() {
             <div className="lens-grid">{earthLayerOptions.map((layer) => { const count = store.signals.filter((signal) => signal.type === layer.type).length; return <button key={layer.type} className={store.layerVisibility[layer.type] ? 'active' : ''} onClick={() => store.toggleLayer(layer.type)} aria-pressed={store.layerVisibility[layer.type]}><i className={`type-dot ${layer.type}`}/><span><strong>{layer.label}</strong><small>{count} available</small></span><b>{store.layerVisibility[layer.type] ? 'ON' : 'OFF'}</b></button> })}</div>
             <p className="control-note">Environmental imagery is visual context, not a forecast. Signal lenses never delete locally cached evidence.</p>
           </>}
-          {activePanel === 'time' && <><div className="time-panel"><TimeControl value={store.timeWindow} onChange={(window) => { store.setTimeWindow(window); setActivePanel(undefined) }}/></div><p className="control-note">Choose the evidence horizon. Provider requests and cached results are bounded to this window.</p></>}
+          {activePanel === 'time' && <><div className="time-panel"><TimeControl value={store.timeWindow} onChange={(window) => { setReplayCutoff(undefined); store.setTimeWindow(window) }}/></div><ReplayControl signals={windowSignals} cutoff={replayCutoff} onCutoff={setReplayCutoff}/><p className="control-note">Replay reveals observations by their authoritative timestamps. It does not interpolate movement or imply causation.</p></>}
         </section>
       </div>}
       {visualMode === 'globe' && !store.globeReady && <div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}
       {selectedSignal && <SignalSheet signal={selectedSignal} onClose={() => store.selectSignal(undefined)}/>} 
+      {replayCutoff && <button className="replay-indicator" onClick={() => { setReplayCutoff(undefined); setActivePanel('time') }}><span>REPLAY · {new Date(replayCutoff).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><strong>Return live</strong></button>}
     </>
-  ), [activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, performanceMode, radarEnabled, satelliteEnabled, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable])
+  ), [activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, performanceMode, radarEnabled, replayCutoff, satelliteEnabled, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable, windowSignals])
 
   return (
     <div className={`app-shell ${ambientActive && ambientIdle ? 'ambient-idle' : ''}`}>
       <TopBar offline={!online} demo={store.demoMode || store.signals.some((signal) => signal.source.freshness === 'demo')} onSettings={() => store.setView('settings')}/>
       {store.view === 'earth' && earthContent}
-      {store.view === 'discover' && <DiscoverPage discoveries={store.discoveries} signals={store.signals} selectedId={store.selectedDiscoveryId} onOpen={(id) => store.selectDiscovery(id || undefined)} onSave={store.saveDiscovery}/>} 
+      {store.view === 'discover' && <DiscoverPage discoveries={store.discoveries} signals={store.signals} selectedId={store.selectedDiscoveryId} onOpen={(id) => store.selectDiscovery(id || undefined)} onSave={store.saveDiscovery} onNotes={store.updateCaseNotes} onRemove={async (id) => { await store.removeCase(id); store.selectDiscovery(undefined); store.setView('cases') }}/>} 
       {store.view === 'cases' && <CasesPage discoveries={store.discoveries} onOpen={(id) => store.selectDiscovery(id)}/>} 
       {store.view === 'observer' && <ObserverPage signals={store.signals}/>} 
       {store.view === 'settings' && <SettingsPage layers={store.layerVisibility} statuses={store.statuses} demoMode={store.demoMode} firmsConfigured={store.firmsConfigured} performanceMode={performanceMode} autoRotate={autoRotate} atmosphere={atmosphere} labels={labels} mapTheme={mapTheme} onToggle={store.toggleLayer} onDemoMode={store.setDemoMode} onFirmsKey={store.setFirmsKey} onRefresh={store.refresh} onPerformance={setPerformanceMode} onAutoRotate={setAutoRotate} onAtmosphere={setAtmosphere} onLabels={setLabels} onMapTheme={setMapTheme} onErase={async () => { await store.eraseLocalData(); setRadarEnabled(false); setSatelliteEnabled(false); setLightingMode('live'); setPerformanceMode('automatic'); setAutoRotate(true); setAtmosphere(true); setLabels(true); setMapTheme('dark') }}/>} 
       {store.view !== 'settings' && <BottomNav view={store.view} onChange={store.setView}/>} 
       {store.view === 'settings' && <button className="settings-done" onClick={() => store.setView('earth')}>Done</button>}
-      {!online && <div className="offline-banner"><Activity size={14}/> Viewing cached and demonstration data</div>}
+      {!online && <div className="offline-banner"><Activity size={14}/> Offline · viewing stored data</div>}
       {ambientActive && ambientIdle && <div className="ambient-hint">AMBIENT EARTH · TAP FOR CONTROLS</div>}
     </div>
   )

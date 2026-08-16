@@ -5,8 +5,11 @@ const inFlight = new Map<string, Promise<Signal[]>>()
 
 function wait(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timer = globalThis.setTimeout(resolve, ms)
-    signal?.addEventListener('abort', () => { globalThis.clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')) }, { once: true })
+    const cleanup = () => signal?.removeEventListener('abort', onAbort)
+    const timer = globalThis.setTimeout(() => { cleanup(); resolve() }, ms)
+    const onAbort = () => { globalThis.clearTimeout(timer); cleanup(); reject(new DOMException('Aborted', 'AbortError')) }
+    if (signal?.aborted) { onAbort(); return }
+    signal?.addEventListener('abort', onAbort, { once: true })
   })
 }
 

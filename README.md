@@ -4,7 +4,7 @@
 
 NEXUS is a mobile-first, privacy-friendly global signal discovery system. It transforms legitimate public data into a traceable model of what is happening on Earth—without paid APIs, accounts, trackers, a proprietary backend, or runtime AI.
 
-The current release is a working multi-source vertical slice. It includes a NASA-textured interactive globe with astronomical live illumination and explicit day/night overrides, a geographically accurate MapLibre investigation map, best-effort global RainViewer radar with official NOAA fallback, near-real-time NOAA GeoColor cloud imagery, live USGS earthquakes, NWS severe-weather alerts with preserved polygons, NASA EONET natural events, GDACS global impact alerts, NOAA space weather, optional NASA FIRMS thermal detections, Open‑Meteo Observer context, normalized Signals, H3 indexing, local persistence, temporal filtering, bounded conservative correlation, anomaly scoring, Discoveries, saved Cases, offline PWA support, provider health, and source provenance.
+The current release is a working multi-source vertical slice. It includes a NASA-textured interactive globe with astronomical live illumination and explicit day/night overrides, a geographically accurate MapLibre investigation map, best-effort global RainViewer radar with official NOAA fallback, near-real-time NOAA GeoColor cloud imagery, live USGS earthquakes, NWS severe-weather alerts with preserved polygons, NASA EONET natural events, GDACS global impact alerts, NOAA space weather, optional NASA FIRMS thermal detections, Open‑Meteo Observer context, normalized Signals, H3 indexing, local persistence, temporal filtering and replay, contextual Lens presets, bounded conservative correlation, anomaly scoring, Discoveries, durable Cases with notes and evidence export, offline PWA support, provider health, source provenance, and a safe recovery screen.
 
 ## Quick start
 
@@ -70,7 +70,7 @@ flowchart TD
 ## Privacy and credibility
 
 - No accounts, analytics, ads, telemetry, or cloud profile.
-- Saved Cases and settings stay in local IndexedDB.
+- Saved Cases, settings, credentials, and saved Observer points stay on the device and can be erased from Storage.
 - Location is requested only from Observer Mode, with an explanation first.
 - Every Signal carries provider, freshness, timestamp, and provenance.
 - Correlations state measurable proximity and never claim causation.
@@ -86,7 +86,7 @@ NEXUS builds to static files in `dist/`. The included `Deploy NEXUS` workflow pu
 - The current satellite layer covers the operational GOES-East/West domain rather than the poles and is labeled as observed imagery.
 - Baselines are currently recent-device baselines; longer statistical history will improve anomaly context.
 - FIRMS requires the user to enter a free NASA MAP key locally; it is never committed or bundled.
-- Replay tracks and high-frequency geostationary satellite animation remain sequenced work.
+- Moving-track reconstruction and high-frequency geostationary satellite animation remain sequenced work; global replay currently replays stored evidence timestamps.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for sequenced expansion and [`docs/RESEARCH.md`](docs/RESEARCH.md) for open-source research and license notes.
 

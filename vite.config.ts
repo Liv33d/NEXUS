@@ -11,7 +11,7 @@ export default defineConfig({
     VitePWA({
       disable: singleFilePreview,
       registerType: 'autoUpdate',
-      includeAssets: ['nexus-mark.svg', 'earth-blue-marble.jpg', 'earth-city-lights.jpg', 'earth-topology.png', 'night-sky.png'],
+      includeAssets: ['nexus-mark.svg', 'nexus-apple-touch.png', 'nexus-icon-192.png', 'nexus-icon-512.png', 'earth-blue-marble.jpg', 'earth-city-lights.jpg', 'earth-topology.png', 'night-sky.png'],
       manifest: {
         name: 'NEXUS — See the world connect',
         short_name: 'NEXUS',
@@ -23,7 +23,9 @@ export default defineConfig({
         scope: './',
         start_url: './',
         icons: [
-          { src: 'nexus-mark.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }
+          { src: 'nexus-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'nexus-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'nexus-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ]
       },
       workbox: {

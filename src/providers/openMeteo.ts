@@ -17,7 +17,7 @@ const geocodingSchema = z.object({ results: z.array(z.object({
 })).optional() })
 
 export interface ObserverPlace {
-  id: number
+  id: number | string
   name: string
   subtitle: string
   latitude: number
