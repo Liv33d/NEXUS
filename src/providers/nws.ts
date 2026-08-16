@@ -74,10 +74,13 @@ export function normalizeNws(payload: unknown, retrievedAt = Date.now()): Signal
     const p = feature.properties
     const location = geometryCenter(feature.geometry)
     if (!location) return []
-    const sourceUrl = p.id ?? feature.id
+    // CAP identifies alerts with a URN, while the GeoJSON feature id is the
+    // canonical HTTPS API document. Keep the URN as identity, never as a link.
+    const sourceUrl = feature.id
+    const alertId = p.id ?? feature.id
     const area = p.areaDesc?.split(';')[0]?.trim()
     return [validateSignal({
-      id: `nws-${encodeURIComponent(sourceUrl).slice(-180)}`,
+      id: `nws-${encodeURIComponent(alertId).slice(-180)}`,
       source: { provider: 'nws', dataset: 'NWS Active Alerts', url: sourceUrl, retrievedAt, freshness: 'live' },
       type: 'weather',
       title: `${p.event}${area ? ` — ${area}` : ''}`,

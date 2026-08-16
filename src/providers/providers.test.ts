@@ -16,11 +16,12 @@ describe('official provider normalization', () => {
   })
 
   it('normalizes an NWS alert polygon with source semantics', () => {
-    const [signal] = normalizeNws({ features: [{ id: 'https://api.weather.gov/alerts/test', geometry: { type: 'Polygon', coordinates: [[[-98, 35], [-97, 35], [-97, 36], [-98, 35]]] }, properties: { id: 'https://api.weather.gov/alerts/test', areaDesc: 'Central Oklahoma', sent: '2026-08-15T20:00:00Z', effective: '2026-08-15T20:00:00Z', onset: '2026-08-15T20:05:00Z', expires: '2026-08-15T21:00:00Z', ends: '2026-08-15T21:00:00Z', status: 'Actual', messageType: 'Alert', category: 'Met', severity: 'Extreme', certainty: 'Observed', urgency: 'Immediate', event: 'Tornado Warning', senderName: 'NWS Norman OK', headline: 'Observed tornado warning' } }] }, Date.parse('2026-08-15T20:01:00Z'))
+    const [signal] = normalizeNws({ features: [{ id: 'https://api.weather.gov/alerts/urn:oid:test', geometry: { type: 'Polygon', coordinates: [[[-98, 35], [-97, 35], [-97, 36], [-98, 35]]] }, properties: { id: 'urn:oid:test', areaDesc: 'Central Oklahoma', sent: '2026-08-15T20:00:00Z', effective: '2026-08-15T20:00:00Z', onset: '2026-08-15T20:05:00Z', expires: '2026-08-15T21:00:00Z', ends: '2026-08-15T21:00:00Z', status: 'Actual', messageType: 'Alert', category: 'Met', severity: 'Extreme', certainty: 'Observed', urgency: 'Immediate', event: 'Tornado Warning', senderName: 'NWS Norman OK', headline: 'Observed tornado warning' } }] }, Date.parse('2026-08-15T20:01:00Z'))
     expect(signal?.type).toBe('weather')
     expect(signal?.severity).toBe(99)
     expect(signal?.location?.h3Index).toBeTruthy()
     expect(signal?.provenance[0]?.label).toBe('OFFICIAL_SOURCE')
+    expect(signal?.source.url).toBe('https://api.weather.gov/alerts/urn:oid:test')
   })
 
   it('keeps only the latest EONET geometry for an event', () => {
