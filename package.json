@@ -17,6 +17,7 @@
     "dexie": "^4.2.0",
     "h3-js": "^4.3.0",
     "lucide-react": "^0.539.0",
+    "maplibre-gl": "^6.3.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-globe.gl": "^2.37.1",

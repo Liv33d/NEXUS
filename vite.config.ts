@@ -11,7 +11,7 @@ export default defineConfig({
     VitePWA({
       disable: singleFilePreview,
       registerType: 'autoUpdate',
-      includeAssets: ['nexus-mark.svg', 'earth-texture.svg'],
+      includeAssets: ['nexus-mark.svg', 'earth-blue-marble.jpg', 'earth-topology.png', 'night-sky.png'],
       manifest: {
         name: 'NEXUS — See the world connect',
         short_name: 'NEXUS',
@@ -58,6 +58,33 @@ export default defineConfig({
               expiration: { maxEntries: 20, maxAgeSeconds: 3600 },
               cacheableResponse: { statuses: [0, 200] }
             }
+          },
+          {
+            urlPattern: /^https:\/\/tiles\.openfreemap\.org\//,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'nexus-map-tiles',
+              expiration: { maxEntries: 220, maxAgeSeconds: 604800 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/mapservices\.weather\.noaa\.gov\//,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'nexus-radar-tiles',
+              expiration: { maxEntries: 64, maxAgeSeconds: 1800 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/gibs\.earthdata\.nasa\.gov\//,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'nexus-satellite-tiles',
+              expiration: { maxEntries: 120, maxAgeSeconds: 172800 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
           }
         ]
       }
@@ -71,6 +98,7 @@ export default defineConfig({
       output: {
         ...(singleFilePreview ? { inlineDynamicImports: true } : { manualChunks: {
           globe: ['react-globe.gl', 'three'],
+          map: ['maplibre-gl'],
           storage: ['dexie'],
           spatial: ['h3-js']
         } })

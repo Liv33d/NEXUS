@@ -19,6 +19,10 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
   const ref = useRef<GlobeMethods | undefined>(undefined)
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight })
   const points = useMemo(() => signals.filter((signal) => signal.location).slice(0, batterySaver ? 350 : 1200), [signals, batterySaver])
+  const rings = useMemo(() => {
+    const notable = points.filter((signal) => (signal.severity ?? 0) >= 58).slice(0, batterySaver ? 8 : 24)
+    return selected?.location && !notable.some((signal) => signal.id === selected.id) ? [selected, ...notable] : notable
+  }, [batterySaver, points, selected])
 
   useEffect(() => {
     const resize = () => setSize({ width: window.innerWidth, height: window.innerHeight })
@@ -37,6 +41,21 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
   }, [batterySaver, selected])
 
   useEffect(() => {
+    const handleVisibility = () => {
+      const globe = ref.current
+      if (!globe) return
+      if (document.visibilityState === 'hidden') globe.pauseAnimation()
+      else {
+        globe.resumeAnimation()
+        const controls = globe.controls()
+        if (controls) controls.autoRotate = !batterySaver && !selected
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [batterySaver, selected])
+
+  useEffect(() => {
     if (!selected?.location) return
     ref.current?.pointOfView({ lat: selected.location.latitude, lng: selected.location.longitude, altitude: 1.45 }, 1100)
   }, [selected])
@@ -48,26 +67,32 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
         width={size.width}
         height={size.height}
         backgroundColor="rgba(0,0,0,0)"
-        globeImageUrl="./earth-texture.svg"
+        globeImageUrl="./earth-blue-marble.jpg"
+        bumpImageUrl="./earth-topology.png"
+        backgroundImageUrl="./night-sky.png"
         showAtmosphere
         atmosphereColor="#4ad8d0"
         atmosphereAltitude={0.12}
         pointsData={points}
         pointLat={(item) => (item as Signal).location!.latitude}
         pointLng={(item) => (item as Signal).location!.longitude}
-        pointAltitude={(item) => 0.012 + ((item as Signal).severity ?? 10) / 3500}
-        pointRadius={(item) => 0.18 + ((item as Signal).severity ?? 10) / 120}
+        pointAltitude={(item) => 0.008 + ((item as Signal).severity ?? 10) / 5000}
+        pointRadius={(item) => 0.12 + ((item as Signal).severity ?? 10) / 190}
         pointColor={(item) => typeColor[(item as Signal).type]}
         pointLabel={() => ''}
         onPointClick={(item) => onSelect(item as Signal)}
-        ringsData={points.filter((signal) => (signal.severity ?? 0) >= 58).slice(0, 24)}
+        ringsData={rings}
         ringLat={(item) => (item as Signal).location!.latitude}
         ringLng={(item) => (item as Signal).location!.longitude}
-        ringColor={(item: object) => typeColor[(item as Signal).type]}
-        ringMaxRadius={(item) => 1.5 + ((item as Signal).severity ?? 0) / 20}
+        ringColor={(item: object) => (item as Signal).id === selected?.id ? '#dffffa' : typeColor[(item as Signal).type]}
+        ringMaxRadius={(item) => 1.1 + ((item as Signal).severity ?? 0) / 24}
         ringPropagationSpeed={batterySaver ? 0 : 0.55}
         ringRepeatPeriod={batterySaver ? Infinity : 1700}
-        onGlobeReady={onReady}
+        onGlobeReady={() => {
+          const globe = ref.current
+          globe?.renderer().setPixelRatio(Math.min(window.devicePixelRatio || 1, batterySaver ? 1 : 1.6))
+          onReady()
+        }}
       />
       <div className="globe-vignette" />
     </div>

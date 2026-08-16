@@ -45,10 +45,26 @@
 - Authentication: none for the documented non-commercial tier.
 - Captured: current temperature, apparent temperature, precipitation, cloud, wind, pressure, weather code, sunrise/sunset, U.S. AQI, and PM2.5.
 
+## NOAA/NWS MRMS radar
+
+- Endpoint: official NOAA `radar_base_reflectivity` ArcGIS MapServer export tiles.
+- Authentication: none.
+- Coverage: CONUS and the other domains published by the service; empty pixels outside coverage are expected.
+- Freshness: the upstream mosaic is normally updated about every five minutes. The layer is labeled with its source and never described as global radar.
+- Storage: only a small, short-lived tile window is cached for resilience.
+
+## NASA EOSDIS GIBS imagery
+
+- Endpoint: official EPSG:3857 WMTS corrected-reflectance true-color imagery.
+- Authentication: none for the selected layer.
+- Coverage: global where MODIS Terra observations are available.
+- Freshness: NEXUS requests the previous completed UTC day to avoid showing partially populated global imagery and labels it delayed.
+- Semantics: this is visual observation context, not a weather forecast and not a discrete Signal.
+
 ## Demo Network
 
 Deterministic representative data guarantees an explorable product and stable tests without external availability. Demo Mode replaces live data rather than silently mixing with it, and every record is visibly marked `DEMO DATA`.
 
 ## Adapter backlog
 
-GDELT must remain labeled as media activity. OpenSky must use viewport loading, strict rate awareness, and short retention. SatNOGS should add orbital context without implying authoritative satellite intent. AviationWeather is not used directly from the static browser client because its official service currently disallows CORS.
+GDELT must remain labeled as media activity. OpenSky must use viewport loading, strict rate awareness, and short retention. SatNOGS should add orbital context without implying authoritative satellite intent. AviationWeather is not used directly from the static browser client because its official service currently disallows CORS. RainViewer was evaluated but not selected as a core dependency because its current usage terms are narrower and long-term public API availability is less certain than the official NOAA and NASA services.
