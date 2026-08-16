@@ -69,9 +69,11 @@ function createEarthMaterial() {
         vec3 dayWorld=pow(max(day.rgb,vec3(0.0)),vec3(.72))*1.22;
         dayWorld=mix(vec3(dot(dayWorld,vec3(.2126,.7152,.0722))),dayWorld,1.12);
         dayWorld=clamp(dayWorld,0.0,1.0);
-        vec3 nightTerrain=pow(max(day.rgb,vec3(0.0)),vec3(.86))*vec3(.055,.075,.12);
-        vec3 cityLights=night.rgb*vec3(1.28,1.12,.82)*1.55;
-        vec3 nightWorld=nightTerrain+cityLights;
+        // Night remains a readable low-light Earth. Astronomical darkness should
+        // communicate time—not erase geography on a phone display.
+        vec3 nightTerrain=dayWorld*vec3(.31,.34,.42);
+        vec3 cityLights=pow(max(night.rgb,vec3(0.0)),vec3(.78))*vec3(1.34,1.16,.84)*1.72;
+        vec3 nightWorld=clamp(nightTerrain+cityLights,0.0,1.0);
         vec3 color=mix(nightWorld,dayWorld,daylight);
         color+=dayWorld*max(light,0.0)*daylight*.08;
         gl_FragColor=vec4(color,1.0);

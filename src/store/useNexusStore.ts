@@ -194,7 +194,7 @@ export const useNexusStore = create<NexusState>((set, get) => ({
     activeRefresh?.abort()
     try { await eraseDatabase() } catch { /* Storage may already be unavailable. */ }
     try {
-      for (const key of ['nexus:radar', 'nexus:satellite', 'nexus:lighting', 'nexus:performance', 'nexus:autoRotate', 'nexus:atmosphere', 'nexus:labels', 'nexus:mapTheme', 'nexus:observerPlaces']) localStorage.removeItem(key)
+      for (const key of ['nexus:radar', 'nexus:satellite', 'nexus:lighting', 'nexus:performance', 'nexus:autoRotate', 'nexus:atmosphere', 'nexus:labels', 'nexus:mapTheme', 'nexus:observerPlaces', 'nexus:temperatureUnit']) localStorage.removeItem(key)
     } catch { /* Private browsing may deny localStorage access. */ }
     recentSurprises.length = 0
     set({
