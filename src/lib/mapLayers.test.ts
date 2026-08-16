@@ -18,9 +18,9 @@ describe('environmental layer endpoints', () => {
 
   it('ships a georeferenced zero-network map fallback', () => {
     const style = fallbackMapStyle('/NEXUS/')
-    const source = style.sources['nexus-earth-base']
-    expect(source?.type).toBe('image')
-    expect(source && 'url' in source ? source.url : '').toBe('/NEXUS/earth-blue-marble.jpg')
+    const source = style.sources['nexus-natural-earth']
+    expect(source?.type).toBe('geojson')
+    expect(source && 'data' in source ? source.data : '').toBe('/NEXUS/natural-earth-110m-countries.geojson')
     expect(worldGridGeoJSON().features.length).toBeGreaterThan(10)
   })
 })

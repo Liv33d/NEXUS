@@ -6,34 +6,41 @@ type MapStyle = Exclude<Parameters<MapLibreMap['setStyle']>[0], string | null>
 export const OPEN_FREE_MAP_STYLE = 'https://tiles.openfreemap.org/styles/dark'
 
 /**
- * A zero-network geographic base used while the vector style is loading and
- * whenever a tile CDN is unavailable. The bundled Blue Marble texture is
- * georeferenced to Web Mercator's usable latitude range, so a slow basemap can
- * never turn the map into an empty error screen.
+ * A zero-network geographic base used while the detailed vector style loads.
+ * The source is Natural Earth 1:110m country geometry bundled with the app.
+ * Do not use a single world image source here: an image spanning the date line
+ * is triangulated in Web Mercator and creates severe antimeridian seams.
  */
 export function fallbackMapStyle(assetBase = './'): MapStyle {
   return {
     version: 8,
     name: 'NEXUS resilient Earth',
     sources: {
-      'nexus-earth-base': {
-        type: 'image',
-        url: `${assetBase}earth-blue-marble.jpg`,
-        coordinates: [[-179.999, 85], [179.999, 85], [179.999, -85], [-179.999, -85]],
+      'nexus-natural-earth': {
+        type: 'geojson',
+        data: `${assetBase}natural-earth-110m-countries.geojson`,
+        attribution: 'Natural Earth',
       },
     },
     layers: [
-      { id: 'nexus-ocean', type: 'background', paint: { 'background-color': '#020708' } },
+      { id: 'nexus-ocean', type: 'background', paint: { 'background-color': '#020607' } },
       {
-        id: 'nexus-earth-base',
-        type: 'raster',
-        source: 'nexus-earth-base',
+        id: 'nexus-land-shadow',
+        type: 'fill',
+        source: 'nexus-natural-earth',
         paint: {
-          'raster-opacity': 0.88,
-          'raster-saturation': -0.32,
-          'raster-contrast': 0.16,
-          'raster-brightness-min': 0.04,
-          'raster-brightness-max': 0.64,
+          'fill-color': '#0a1415',
+          'fill-outline-color': 'rgba(117, 173, 170, 0.24)',
+        },
+      },
+      {
+        id: 'nexus-country-borders',
+        type: 'line',
+        source: 'nexus-natural-earth',
+        paint: {
+          'line-color': 'rgba(136, 183, 180, 0.24)',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 0.8, 0.42, 6, 0.9],
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 0.8, 0.58, 5, 0.28],
         },
       },
     ],

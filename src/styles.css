@@ -122,13 +122,13 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .map-loading span { width:28px;height:28px;border:1px solid rgba(143,245,232,.2);border-top-color:var(--cyan);border-radius:50%;animation:spin .9s linear infinite }
 .map-loading strong,.map-error strong { color:#dce6e6;font-size:12px;letter-spacing:.08em;text-transform:uppercase }
 .map-error span { max-width:280px;font-size:10px;line-height:1.5 }
-.map-layer-dock { position:absolute;z-index:6;left:16px;right:16px;top:calc(168px + env(safe-area-inset-top));display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;pointer-events:auto }
+.map-layer-dock { position:absolute;z-index:6;right:16px;top:calc(168px + env(safe-area-inset-top));display:flex;gap:5px;pointer-events:auto }
 .map-layer-dock button { min-width:0;min-height:41px;padding:6px 7px;display:grid;grid-template-columns:18px minmax(0,auto);justify-content:center;align-items:center;gap:5px;border:1px solid var(--line);border-radius:13px;background:rgba(5,10,11,.8);color:#718082;text-align:left;backdrop-filter:blur(18px);box-shadow:0 8px 25px rgba(0,0,0,.22) }
 .map-layer-dock button.active { color:var(--cyan);border-color:rgba(143,245,232,.24);background:rgba(14,35,34,.86) }
 .map-layer-dock svg { width:15px;height:15px;grid-row:1/3 }
 .map-layer-dock span { min-width:0;display:block;font-size:9px;font-weight:650;letter-spacing:.03em;white-space:nowrap }
 .map-layer-dock small { display:block;margin-top:2px;color:#6d7a7c;font:500 6px/1 "SFMono-Regular",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.06em }
-.radar-timeline { position:absolute;z-index:6;left:16px;top:calc(219px + env(safe-area-inset-top));width:min(300px,calc(100% - 32px));height:38px;padding:4px 8px 4px 4px;display:grid;grid-template-columns:31px 1fr 48px;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;background:rgba(5,10,11,.84);backdrop-filter:blur(18px);box-shadow:0 8px 25px rgba(0,0,0,.22) }
+.radar-timeline { position:absolute;z-index:6;left:16px;right:16px;top:calc(218px + env(safe-area-inset-top));height:38px;padding:4px 8px 4px 4px;display:grid;grid-template-columns:31px 1fr 48px;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;background:rgba(5,10,11,.84);backdrop-filter:blur(18px);box-shadow:0 8px 25px rgba(0,0,0,.22) }
 .radar-timeline button { width:30px;height:30px;display:grid;place-items:center;border-radius:9px;background:rgba(143,245,232,.1);color:var(--cyan) }.radar-timeline svg { width:13px;height:13px }
 .radar-timeline button:disabled { opacity:.38;cursor:not-allowed }
 .radar-timeline input { width:100%;height:24px;margin:0;accent-color:var(--cyan);touch-action:pan-x }.radar-timeline time { color:#9aabad;text-align:right;font:600 7px/1 "SFMono-Regular",ui-monospace,monospace;letter-spacing:.06em }

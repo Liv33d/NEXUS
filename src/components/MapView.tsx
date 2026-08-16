@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CloudRain, Layers3, Pause, Play, RefreshCw, Satellite } from 'lucide-react'
+import { CloudRain, Layers3, Pause, Play, RefreshCw } from 'lucide-react'
 import {
   AttributionControl,
   Map as MapLibreMap,
@@ -11,9 +11,7 @@ import {
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { geometryBounds, signalAreasGeoJSON, signalPointsGeoJSON } from '../lib/geospatial'
 import {
-  environmentalLayers,
   fallbackMapStyle,
-  nasaTrueColorTiles,
   noaaRadarTiles,
   OPEN_FREE_MAP_STYLE,
   radarFrames,
@@ -35,17 +33,16 @@ export default function MapView({ signals, selected, onSelect }: Props) {
   const mapRef = useRef<MapLibreMap | null>(null)
   const onSelectRef = useRef(onSelect)
   const signalsRef = useRef(signals)
-  const layerStateRef = useRef({ radar: true, satellite: false, signals: true, radarFrame: 0 })
+  const layerStateRef = useRef({ radar: false, signals: true, radarFrame: 0 })
   const remoteStyleAbortRef = useRef<AbortController | undefined>(undefined)
   const remoteStyleRequestedRef = useRef(false)
   const nextStyleRef = useRef<BasemapState>('onboard')
   const [ready, setReady] = useState(false)
-  const [radar, setRadar] = useState(true)
+  const [radar, setRadar] = useState(false)
   const [radarPlaying, setRadarPlaying] = useState(false)
   const frames = useMemo(() => radarFrames(), [])
   const reduceMotion = useMemo(() => matchMedia('(prefers-reduced-motion: reduce)').matches, [])
   const [radarFrame, setRadarFrame] = useState(frames.length - 1)
-  const [satellite, setSatellite] = useState(false)
   const [signalsVisible, setSignalsVisible] = useState(true)
   const [basemapState, setBasemapState] = useState<BasemapState>('loading')
   const [rendererError, setRendererError] = useState<string>()
@@ -53,7 +50,7 @@ export default function MapView({ signals, selected, onSelect }: Props) {
   const areas = useMemo(() => signalAreasGeoJSON(signals), [signals])
   signalsRef.current = signals
   onSelectRef.current = onSelect
-  layerStateRef.current = { radar, satellite, signals: signalsVisible, radarFrame }
+  layerStateRef.current = { radar, signals: signalsVisible, radarFrame }
 
   const requestVectorBasemap = useCallback(async () => {
     const map = mapRef.current
@@ -91,7 +88,7 @@ export default function MapView({ signals, selected, onSelect }: Props) {
         pitch: 0,
         bearing: 0,
         attributionControl: false,
-        renderWorldCopies: true,
+        renderWorldCopies: false,
         maxPitch: 65,
         fadeDuration: reduceMotion ? 0 : 220,
         cancelPendingTileRequestsWhileZooming: true,
@@ -109,9 +106,7 @@ export default function MapView({ signals, selected, onSelect }: Props) {
       const firstLabel = map.getStyle().layers?.find((layer: { type: string }) => layer.type === 'symbol')?.id
       if (!map.getSource('nexus-grid')) map.addSource('nexus-grid', { type: 'geojson', data: worldGridGeoJSON() })
       if (!map.getLayer('nexus-grid')) map.addLayer({ id: 'nexus-grid', type: 'line', source: 'nexus-grid', paint: { 'line-color': 'rgba(143,245,232,.16)', 'line-width': .55, 'line-opacity': ['interpolate', ['linear'], ['zoom'], 1, .72, 6, .18] } }, firstLabel)
-      if (!map.getSource('nexus-satellite')) map.addSource('nexus-satellite', { type: 'raster', tiles: [nasaTrueColorTiles()], tileSize: 256, maxzoom: 9, attribution: environmentalLayers.satellite.attribution })
-      if (!map.getLayer('nexus-satellite')) map.addLayer({ id: 'nexus-satellite', type: 'raster', source: 'nexus-satellite', layout: { visibility: state.satellite ? 'visible' : 'none' }, paint: { 'raster-opacity': .74, 'raster-fade-duration': 260 } }, firstLabel)
-      if (!map.getSource('nexus-radar')) map.addSource('nexus-radar', { type: 'raster', tiles: [noaaRadarTiles(frames[state.radarFrame] ?? frames.at(-1))], tileSize: 256, attribution: environmentalLayers.radar.attribution })
+      if (!map.getSource('nexus-radar')) map.addSource('nexus-radar', { type: 'raster', tiles: [noaaRadarTiles(frames[state.radarFrame] ?? frames.at(-1))], tileSize: 256, attribution: 'Radar: NOAA/NWS MRMS' })
       if (!map.getLayer('nexus-radar')) map.addLayer({ id: 'nexus-radar', type: 'raster', source: 'nexus-radar', layout: { visibility: state.radar ? 'visible' : 'none' }, paint: { 'raster-opacity': .66, 'raster-fade-duration': 180 } }, firstLabel)
       if (!map.getSource('nexus-areas')) map.addSource('nexus-areas', { type: 'geojson', data: signalAreasGeoJSON(signalsRef.current) })
       if (!map.getLayer('nexus-area-fill')) map.addLayer({ id: 'nexus-area-fill', type: 'fill', source: 'nexus-areas', layout: { visibility: state.signals ? 'visible' : 'none' }, paint: { 'fill-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 1, .08, 7, .2] } })
@@ -190,8 +185,7 @@ export default function MapView({ signals, selected, onSelect }: Props) {
     if (!map || !ready) return
     for (const layer of ['nexus-heat', 'nexus-clusters', 'nexus-cluster-count', 'nexus-signals', 'nexus-selected', 'nexus-area-fill', 'nexus-area-line']) if (map.getLayer(layer)) map.setLayoutProperty(layer, 'visibility', signalsVisible ? 'visible' : 'none')
     if (map.getLayer('nexus-radar')) map.setLayoutProperty('nexus-radar', 'visibility', radar ? 'visible' : 'none')
-    if (map.getLayer('nexus-satellite')) map.setLayoutProperty('nexus-satellite', 'visibility', satellite ? 'visible' : 'none')
-  }, [radar, ready, satellite, signalsVisible])
+  }, [radar, ready, signalsVisible])
 
   useEffect(() => {
     const map = mapRef.current
@@ -210,7 +204,6 @@ export default function MapView({ signals, selected, onSelect }: Props) {
     {ready && basemapState !== 'vector' && <button className="basemap-recovery" onClick={() => void requestVectorBasemap()} aria-label="Retry detailed vector basemap"><span>{basemapState === 'loading' ? 'DETAILS LOADING' : 'ONBOARD MAP'}</span><RefreshCw className={basemapState === 'loading' ? 'spin' : ''}/></button>}
     <div className="map-layer-dock" role="group" aria-label="Environmental map overlays">
       <button className={radar ? 'active' : ''} aria-pressed={radar} onClick={() => { setRadar((value) => !value); setRadarPlaying(false) }}><CloudRain/><span>Radar<small>{radarFrame === frames.length - 1 ? 'NOAA · latest' : `NOAA · −${(frames.length - radarFrame - 1) * 10} min`}</small></span></button>
-      <button className={satellite ? 'active' : ''} aria-pressed={satellite} onClick={() => setSatellite((value) => !value)}><Satellite/><span>Satellite<small>NASA · delayed</small></span></button>
       <button className={signalsVisible ? 'active' : ''} aria-pressed={signalsVisible} onClick={() => setSignalsVisible((value) => !value)}><Layers3/><span>Signals<small>{points.features.length} mapped</small></span></button>
     </div>
     {radar && <div className="radar-timeline" role="group" aria-label="NOAA radar history">
