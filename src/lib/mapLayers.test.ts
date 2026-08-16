@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nasaTrueColorTiles, noaaRadarTiles, previousUtcDate, radarFrames } from './mapLayers'
+import { fallbackMapStyle, nasaTrueColorTiles, noaaRadarTiles, previousUtcDate, radarFrames, worldGridGeoJSON } from './mapLayers'
 
 describe('environmental layer endpoints', () => {
   it('uses the previous completed UTC day for global imagery', () => {
@@ -14,5 +14,13 @@ describe('environmental layer endpoints', () => {
     expect(noaaRadarTiles(frames[2]).startsWith('https://')).toBe(true)
     expect(noaaRadarTiles(frames[2])).toContain('{bbox-epsg-3857}')
     expect(noaaRadarTiles(frames[2])).toContain(`time=${frames[2]}`)
+  })
+
+  it('ships a georeferenced zero-network map fallback', () => {
+    const style = fallbackMapStyle('/NEXUS/')
+    const source = style.sources['nexus-earth-base']
+    expect(source?.type).toBe('image')
+    expect(source && 'url' in source ? source.url : '').toBe('/NEXUS/earth-blue-marble.jpg')
+    expect(worldGridGeoJSON().features.length).toBeGreaterThan(10)
   })
 })
