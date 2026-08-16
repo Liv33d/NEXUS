@@ -11,6 +11,9 @@
 - Provider retry/deduplication, cached fallback, and health control surface
 - NASA-textured globe and lazy MapLibre investigation map with clustering, alert polygons, and accessible no-WebGL fallback
 - Official NOAA radar and delayed NASA GIBS true-color contextual overlays
+- User-controlled NOAA radar history replay with reduced-motion and visibility safeguards
+- Global GDACS impact alerts for cyclones, floods, volcanoes, droughts, and wildfires
+- Preserved, bounded NWS alert geometry and auditable investigation source lists
 - Bounded spatial-time candidate generation for mobile-safe correlation
 - H3 indexing, temporal windows, conservative relationships, Discoveries
 - IndexedDB retention, saved Cases, search, Observer permission flow

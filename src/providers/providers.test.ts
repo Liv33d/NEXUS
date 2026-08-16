@@ -1,10 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeEonet } from './eonet'
 import { normalizeFirmsCsv } from './firms'
+import { normalizeGdacs } from './gdacs'
 import { normalizeNws } from './nws'
 import { normalizeSwpc } from './swpc'
 
 describe('official provider normalization', () => {
+  it('normalizes GDACS impact alerts without presenting them as local warnings', () => {
+    const [signal] = normalizeGdacs({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:[-82.46,27.95] }, properties:{ eventid:42, episodeid:3, eventtype:'TC', name:'Example Cyclone', alertlevel:'Orange', alertscore:2.1, fromdate:'2026-08-15T12:00:00Z', todate:'2026-08-18T12:00:00Z', country:'United States', url:{ details:'https://www.gdacs.org/report.aspx?eventid=42' } } }] }, Date.parse('2026-08-16T00:00:00Z'))
+    expect(signal?.source.provider).toBe('gdacs')
+    expect(signal?.type).toBe('weather')
+    expect(signal?.severity).toBe(70.1)
+    expect(signal?.summary).toContain('not a local emergency warning')
+    expect(signal?.geometry?.type).toBe('Point')
+  })
+
   it('normalizes an NWS alert polygon with source semantics', () => {
     const [signal] = normalizeNws({ features: [{ id: 'https://api.weather.gov/alerts/test', geometry: { type: 'Polygon', coordinates: [[[-98, 35], [-97, 35], [-97, 36], [-98, 35]]] }, properties: { id: 'https://api.weather.gov/alerts/test', areaDesc: 'Central Oklahoma', sent: '2026-08-15T20:00:00Z', effective: '2026-08-15T20:00:00Z', onset: '2026-08-15T20:05:00Z', expires: '2026-08-15T21:00:00Z', ends: '2026-08-15T21:00:00Z', status: 'Actual', messageType: 'Alert', category: 'Met', severity: 'Extreme', certainty: 'Observed', urgency: 'Immediate', event: 'Tornado Warning', senderName: 'NWS Norman OK', headline: 'Observed tornado warning' } }] }, Date.parse('2026-08-15T20:01:00Z'))
     expect(signal?.type).toBe('weather')

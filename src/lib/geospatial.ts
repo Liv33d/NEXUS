@@ -2,6 +2,7 @@ import type { Feature, FeatureCollection, Geometry, MultiPolygon, Point, Polygon
 import type { Signal } from '../types/signal'
 
 export const MAX_MERCATOR_LATITUDE = 85.051129
+export const MAX_GEOMETRY_POSITIONS = 25_000
 
 export function normalizeLongitude(longitude: number): number {
   if (!Number.isFinite(longitude)) throw new Error('Longitude must be finite')
@@ -36,8 +37,14 @@ function validRing(value: unknown): value is Array<[number, number, ...number[]]
 
 export function sanitizeAreaGeometry(geometry?: Geometry): Polygon | MultiPolygon | undefined {
   if (!geometry) return undefined
-  if (geometry.type === 'Polygon' && Array.isArray(geometry.coordinates) && geometry.coordinates.every(validRing)) return geometry
-  if (geometry.type === 'MultiPolygon' && Array.isArray(geometry.coordinates) && geometry.coordinates.every((polygon) => Array.isArray(polygon) && polygon.every(validRing))) return geometry
+  let positions = 0
+  const boundedRing = (ring: unknown) => {
+    if (!Array.isArray(ring)) return false
+    positions += ring.length
+    return positions <= MAX_GEOMETRY_POSITIONS && validRing(ring)
+  }
+  if (geometry.type === 'Polygon' && Array.isArray(geometry.coordinates) && geometry.coordinates.every(boundedRing)) return geometry
+  if (geometry.type === 'MultiPolygon' && Array.isArray(geometry.coordinates) && geometry.coordinates.every((polygon) => Array.isArray(polygon) && polygon.every(boundedRing))) return geometry
   return undefined
 }
 

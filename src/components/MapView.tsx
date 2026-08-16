@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CloudRain, Layers3, Satellite } from 'lucide-react'
-import { AttributionControl, Map as MapLibreMap, NavigationControl, type GeoJSONSource, type MapLayerMouseEvent } from 'maplibre-gl'
+import { CloudRain, Layers3, Pause, Play, Satellite } from 'lucide-react'
+import { AttributionControl, Map as MapLibreMap, NavigationControl, type GeoJSONSource, type MapLayerMouseEvent, type RasterTileSource } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { geometryBounds, signalAreasGeoJSON, signalPointsGeoJSON } from '../lib/geospatial'
-import { environmentalLayers, nasaTrueColorTiles, NOAA_RADAR_TILES, OPEN_FREE_MAP_STYLE } from '../lib/mapLayers'
+import { environmentalLayers, nasaTrueColorTiles, noaaRadarTiles, OPEN_FREE_MAP_STYLE, radarFrames } from '../lib/mapLayers'
 import type { Signal } from '../types/signal'
 
 interface Props {
@@ -19,6 +19,10 @@ export default function MapView({ signals, selected, onSelect }: Props) {
   const signalsRef = useRef(signals)
   const [ready, setReady] = useState(false)
   const [radar, setRadar] = useState(true)
+  const [radarPlaying, setRadarPlaying] = useState(false)
+  const frames = useMemo(() => radarFrames(), [])
+  const reduceMotion = useMemo(() => matchMedia('(prefers-reduced-motion: reduce)').matches, [])
+  const [radarFrame, setRadarFrame] = useState(frames.length - 1)
   const [satellite, setSatellite] = useState(false)
   const [signalsVisible, setSignalsVisible] = useState(true)
   const [error, setError] = useState<string>()
@@ -43,21 +47,25 @@ export default function MapView({ signals, selected, onSelect }: Props) {
         attributionControl: false,
         renderWorldCopies: true,
         maxPitch: 65,
-        fadeDuration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220,
+        fadeDuration: reduceMotion ? 0 : 220,
       })
     } catch {
       setError('The geographic renderer could not start on this device.')
       return
     }
     mapRef.current = map
+    const loadTimeout = window.setTimeout(() => {
+      if (!map.isStyleLoaded()) setError('The basemap did not respond in time. Live Signals remain available in the accessible views.')
+    }, 12_000)
     map.addControl(new NavigationControl({ visualizePitch: true, showZoom: true, showCompass: true }), 'bottom-right')
     map.addControl(new AttributionControl({ compact: true }), 'bottom-left')
 
     map.once('load', () => {
+      window.clearTimeout(loadTimeout)
       const firstLabel = map.getStyle().layers?.find((layer: { type: string }) => layer.type === 'symbol')?.id
       map.addSource('nexus-satellite', { type: 'raster', tiles: [nasaTrueColorTiles()], tileSize: 256, maxzoom: 9, attribution: environmentalLayers.satellite.attribution })
       map.addLayer({ id: 'nexus-satellite', type: 'raster', source: 'nexus-satellite', layout: { visibility: 'none' }, paint: { 'raster-opacity': .74, 'raster-fade-duration': 260 } }, firstLabel)
-      map.addSource('nexus-radar', { type: 'raster', tiles: [NOAA_RADAR_TILES], tileSize: 256, attribution: environmentalLayers.radar.attribution })
+      map.addSource('nexus-radar', { type: 'raster', tiles: [noaaRadarTiles(frames[frames.length - 1])], tileSize: 256, attribution: environmentalLayers.radar.attribution })
       map.addLayer({ id: 'nexus-radar', type: 'raster', source: 'nexus-radar', paint: { 'raster-opacity': .66, 'raster-fade-duration': 180 } }, firstLabel)
       map.addSource('nexus-areas', { type: 'geojson', data: signalAreasGeoJSON(signalsRef.current) })
       map.addLayer({ id: 'nexus-area-fill', type: 'fill', source: 'nexus-areas', paint: { 'fill-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 1, .08, 7, .2] } })
@@ -94,8 +102,22 @@ export default function MapView({ signals, selected, onSelect }: Props) {
     })
     const resize = new ResizeObserver(() => map.resize())
     resize.observe(containerRef.current)
-    return () => { resize.disconnect(); map.remove(); mapRef.current = null }
-  }, [])
+    return () => { window.clearTimeout(loadTimeout); resize.disconnect(); map.remove(); mapRef.current = null }
+  }, [frames, reduceMotion])
+
+  useEffect(() => {
+    if (!radar || !radarPlaying || reduceMotion) return
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setRadarFrame((frame) => (frame + 1) % frames.length)
+    }, 1250)
+    return () => window.clearInterval(timer)
+  }, [frames.length, radar, radarPlaying, reduceMotion])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready) return
+    ;(map.getSource('nexus-radar') as RasterTileSource | undefined)?.setTiles([noaaRadarTiles(frames[radarFrame])])
+  }, [frames, radarFrame, ready])
 
   useEffect(() => {
     const map = mapRef.current
@@ -127,9 +149,14 @@ export default function MapView({ signals, selected, onSelect }: Props) {
     {!ready && !error && <div className="map-loading"><span/><strong>Resolving world geometry</strong></div>}
     {error && <div className="map-error"><strong>Map temporarily unavailable</strong><span>{error}</span></div>}
     <div className="map-layer-dock" role="group" aria-label="Environmental map overlays">
-      <button className={radar ? 'active' : ''} aria-pressed={radar} onClick={() => setRadar((value) => !value)}><CloudRain/><span>Radar<small>NOAA · 5 min</small></span></button>
+      <button className={radar ? 'active' : ''} aria-pressed={radar} onClick={() => { setRadar((value) => !value); setRadarPlaying(false) }}><CloudRain/><span>Radar<small>{radarFrame === frames.length - 1 ? 'NOAA · latest' : `NOAA · −${(frames.length - radarFrame - 1) * 10} min`}</small></span></button>
       <button className={satellite ? 'active' : ''} aria-pressed={satellite} onClick={() => setSatellite((value) => !value)}><Satellite/><span>Satellite<small>NASA · delayed</small></span></button>
       <button className={signalsVisible ? 'active' : ''} aria-pressed={signalsVisible} onClick={() => setSignalsVisible((value) => !value)}><Layers3/><span>Signals<small>{points.features.length} mapped</small></span></button>
     </div>
+    {radar && <div className="radar-timeline" role="group" aria-label="NOAA radar history">
+      <button disabled={reduceMotion} onClick={() => setRadarPlaying((value) => !value)} aria-label={reduceMotion ? 'Radar replay disabled by reduced motion preference; use the slider' : radarPlaying ? 'Pause radar replay' : 'Play radar replay'}>{radarPlaying ? <Pause/> : <Play/>}</button>
+      <input type="range" min="0" max={frames.length - 1} value={radarFrame} onChange={(event) => { setRadarPlaying(false); setRadarFrame(Number(event.target.value)) }} aria-label="Radar observation time"/>
+      <time>{radarFrame === frames.length - 1 ? 'LATEST' : new Date(frames[radarFrame]!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>
+    </div>}
   </div>
 }

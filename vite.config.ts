@@ -41,7 +41,7 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /^https:\/\/(api\.weather\.gov|eonet\.gsfc\.nasa\.gov|services\.swpc\.noaa\.gov)\//,
+            urlPattern: /^https:\/\/(api\.weather\.gov|eonet\.gsfc\.nasa\.gov|services\.swpc\.noaa\.gov|www\.gdacs\.org)\//,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'nexus-official-feeds',

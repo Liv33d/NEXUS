@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nasaTrueColorTiles, NOAA_RADAR_TILES, previousUtcDate } from './mapLayers'
+import { nasaTrueColorTiles, noaaRadarTiles, previousUtcDate, radarFrames } from './mapLayers'
 
 describe('environmental layer endpoints', () => {
   it('uses the previous completed UTC day for global imagery', () => {
@@ -9,7 +9,10 @@ describe('environmental layer endpoints', () => {
   })
 
   it('uses an HTTPS projected NOAA tile request', () => {
-    expect(NOAA_RADAR_TILES.startsWith('https://')).toBe(true)
-    expect(NOAA_RADAR_TILES).toContain('{bbox-epsg-3857}')
+    const frames = radarFrames(Date.parse('2026-08-16T05:17:00Z'), 3)
+    expect(frames).toEqual([Date.parse('2026-08-16T04:40:00Z'), Date.parse('2026-08-16T04:50:00Z'), Date.parse('2026-08-16T05:00:00Z')])
+    expect(noaaRadarTiles(frames[2]).startsWith('https://')).toBe(true)
+    expect(noaaRadarTiles(frames[2])).toContain('{bbox-epsg-3857}')
+    expect(noaaRadarTiles(frames[2])).toContain(`time=${frames[2]}`)
   })
 })

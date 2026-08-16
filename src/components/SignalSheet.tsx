@@ -16,7 +16,8 @@ export function SignalSheet({ signal, onClose }: { signal: Signal; onClose(): vo
         <div><span>Observed</span><strong>{age}m ago</strong></div>
       </div>
       {signal.location && <div className="location-row"><MapPin size={16}/>{signal.location.latitude.toFixed(3)}, {signal.location.longitude.toFixed(3)} · H3 {signal.location.h3Index?.slice(-6)}</div>}
-      <div className="provenance"><ShieldCheck size={17}/><div><strong>{signal.provenance[0]?.label.replaceAll('_', ' ')}</strong><span>{signal.provenance[0]?.description}</span></div></div>
+      <div className="evidence-meta"><span>Dataset<strong>{signal.source.dataset ?? signal.source.provider}</strong></span><span>Retrieved<strong>{new Date(signal.source.retrievedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</strong></span><span>State<strong>{signal.source.freshness}</strong></span></div>
+      {signal.provenance.map((entry, index) => <div className="provenance" key={`${entry.label}-${index}`}><ShieldCheck size={17}/><div><strong>{entry.label.replaceAll('_', ' ')}</strong><span>{entry.description}</span></div></div>)}
       {signal.source.url && <a className="source-link" href={signal.source.url} target="_blank" rel="noreferrer">Open original source <ExternalLink size={15}/></a>}
     </section>
   )
