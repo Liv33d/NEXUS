@@ -67,6 +67,12 @@ export interface Discovery {
   title: string
   description: string
   score: number
+  scoreComponents?: {
+    typicalSeverity: number
+    peakSeverity: number
+    evidence: number
+    diversity: number
+  }
   level: 'routine' | 'elevated' | 'unusual' | 'significant' | 'exceptional'
   center?: { latitude: number; longitude: number }
   signalIds: string[]

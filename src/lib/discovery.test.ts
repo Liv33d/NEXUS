@@ -26,4 +26,10 @@ describe('discovery engine', () => {
     }))
     expect(buildDiscoveries(signals, now).length).toBeLessThanOrEqual(12)
   })
+  it('exposes an explainable score composition', () => {
+    const now = 1_800_000_000_000
+    const discovery = buildDiscoveries(createDemoSignals(now), now)[0]
+    expect(discovery?.scoreComponents).toBeDefined()
+    expect(Object.values(discovery?.scoreComponents ?? {}).every((value) => value >= 0)).toBe(true)
+  })
 })
