@@ -4,7 +4,7 @@
 
 NEXUS is a mobile-first, privacy-friendly global signal discovery system. It transforms legitimate public data into a traceable model of what is happening on Earth—without paid APIs, accounts, trackers, a proprietary backend, or runtime AI.
 
-The current release is a working multi-source vertical slice. It includes a NASA-textured interactive globe, a geographically accurate MapLibre investigation map, time-enabled NOAA radar replay, delayed NASA satellite imagery, live USGS earthquakes, NWS severe-weather alerts with preserved polygons, NASA EONET natural events, GDACS global impact alerts, NOAA space weather, optional NASA FIRMS thermal detections, Open‑Meteo Observer context, normalized Signals, H3 indexing, local persistence, temporal filtering, bounded conservative correlation, anomaly scoring, Discoveries, saved Cases, offline PWA support, provider health, and source provenance.
+The current release is a working multi-source vertical slice. It includes a NASA-textured interactive globe with astronomical live illumination and explicit day/night overrides, a geographically accurate MapLibre investigation map, best-effort global RainViewer radar with official NOAA fallback, near-real-time NOAA GeoColor cloud imagery, live USGS earthquakes, NWS severe-weather alerts with preserved polygons, NASA EONET natural events, GDACS global impact alerts, NOAA space weather, optional NASA FIRMS thermal detections, Open‑Meteo Observer context, normalized Signals, H3 indexing, local persistence, temporal filtering, bounded conservative correlation, anomaly scoring, Discoveries, saved Cases, offline PWA support, provider health, and source provenance.
 
 ## Quick start
 
@@ -63,8 +63,8 @@ flowchart TD
 | NOAA SWPC | Live | Global NOAA R/S/G space-weather scales |
 | NASA FIRMS | Optional live/delayed | User-supplied free MAP key stored only on-device |
 | Open‑Meteo | On demand | Weather, wind, air quality, sunrise, and sunset in Observer Mode |
-| NOAA/NWS MRMS | Live overlay | Official base-reflectivity radar with a user-controlled recent-history replay |
-| NASA EOSDIS GIBS | Delayed overlay | Global MODIS Terra corrected-reflectance true color from the previous completed UTC day |
+| RainViewer + NOAA/NWS MRMS | Live overlay | Latest global best-effort radar in Detail Map; official U.S. composite fallback and globe context |
+| NOAA/NESDIS GeoColor | Live overlay | Latest merged GOES-East/West observed cloud imagery |
 | NEXUS Demo Network | Built in | Deterministic, isolated replacement mode for exploration and testing |
 
 ## Privacy and credibility
@@ -82,8 +82,8 @@ NEXUS builds to static files in `dist/`. The included `Deploy NEXUS` workflow pu
 
 ## Limitations
 
-- Radar coverage is regional rather than global; outside NOAA radar domains the layer is intentionally empty. Replay is opt-in to avoid unnecessary battery and network use.
-- The current global satellite layer favors complete, stable imagery over false immediacy and is explicitly labeled delayed.
+- Radar availability and coverage remain provider-dependent. RainViewer is a best-effort enhancement with no SLA; NOAA fallback coverage is regional, and neither source is presented as a forecast.
+- The current satellite layer covers the operational GOES-East/West domain rather than the poles and is labeled as observed imagery.
 - Baselines are currently recent-device baselines; longer statistical history will improve anomaly context.
 - FIRMS requires the user to enter a free NASA MAP key locally; it is never committed or bundled.
 - Replay tracks and high-frequency geostationary satellite animation remain sequenced work.
