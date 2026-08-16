@@ -55,11 +55,11 @@
 
 ## NOAA/NWS MRMS radar
 
-- Endpoint: official NOAA `radar_base_reflectivity` ArcGIS MapServer export tiles.
+- Endpoint: official NOAA `radar_base_reflectivity` ArcGIS MapServer bounded image export.
 - Authentication: none.
 - Coverage: CONUS and the other domains published by the service; empty pixels outside coverage are expected.
-- Freshness: the upstream mosaic is normally updated about every five minutes. The official time-enabled image service exposes a moving recent-history window; NEXUS presents ten-minute steps and never invents interpolation between observations.
-- Storage: only a small, short-lived tile window is cached for resilience.
+- Freshness: the upstream mosaic is normally updated about every five minutes. The current service is not time-enabled, and NEXUS does not imply historical playback.
+- Storage: one short-lived transparent EPSG:4326 export is cached for resilience and aligned to both visual renderers.
 
 ## NASA EOSDIS GIBS imagery
 

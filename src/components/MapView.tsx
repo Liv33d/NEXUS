@@ -3,12 +3,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson'
 import { ATLAS_HEIGHT as HEIGHT, ATLAS_WIDTH as WIDTH, atlasGeometryPath, atlasProject, prioritizeAtlasSignals } from '../lib/atlas'
 import { sanitizeAreaGeometry } from '../lib/geospatial'
+import { noaaRadarImage } from '../lib/mapLayers'
 import type { Signal } from '../types/signal'
 
 interface Props {
   signals: Signal[]
   selected?: Signal
   onSelect(signal: Signal): void
+  radarEnabled?: boolean
 }
 
 type WorldFeature = Feature<Polygon | MultiPolygon>
@@ -22,13 +24,15 @@ const colors: Record<Signal['type'], string> = {
   'space-weather': '#d6a4ff', media: '#f2da87', environment: '#74d9a1', infrastructure: '#c7d0d0',
 }
 
-export default function MapView({ signals, selected, onSelect }: Props) {
+export default function MapView({ signals, selected, onSelect, radarEnabled = false }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const gesture = useRef<{ distance?: number; camera: Camera }>({ camera: initialCamera })
   const [world, setWorld] = useState<WorldFeature[]>([])
   const [loadFailed, setLoadFailed] = useState(false)
   const [camera, setCamera] = useState<Camera>(initialCamera)
+  const [radarStatus, setRadarStatus] = useState<'loading' | 'live' | 'error'>('loading')
+  const radarUrl = useMemo(() => noaaRadarImage(), [])
   const areas = useMemo(() => signals.flatMap((signal) => {
     const geometry = sanitizeAreaGeometry(signal.geometry)
     return geometry ? [{ signal, path: atlasGeometryPath(geometry) }] : []
@@ -109,13 +113,14 @@ export default function MapView({ signals, selected, onSelect }: Props) {
       <g transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`}>
         <g className="atlas-grid">{[-120,-60,0,60,120].map((longitude) => { const [x] = atlasProject(longitude, 0); return <line key={`lng-${longitude}`} x1={x} x2={x} y1="0" y2={HEIGHT}/> })}{[-60,-30,0,30,60].map((latitude) => { const [,y] = atlasProject(0, latitude); return <line key={`lat-${latitude}`} x1="0" x2={WIDTH} y1={y} y2={y}/> })}</g>
         <g className="atlas-land">{world.map((feature, index) => <path key={`${typeof feature.properties?.name === 'string' ? feature.properties.name : 'land'}-${index}`} d={atlasGeometryPath(feature.geometry)}/>)}</g>
+        {radarEnabled && <image className="atlas-radar" href={radarUrl} x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="none" onLoad={() => setRadarStatus('live')} onError={() => setRadarStatus('error')}/>} 
         <g className="atlas-areas">{areas.map(({ signal, path }) => <path key={signal.id} d={path} fill={colors[signal.type]} stroke={colors[signal.type]} onClick={(event) => { event.stopPropagation(); onSelect(signal) }}><title>{signal.title}</title></path>)}</g>
         <g className="atlas-signals">{points.map((signal) => { const [cx, cy] = atlasProject(signal.location!.longitude, signal.location!.latitude); const isSelected = signal.id === selected?.id; const radius = (isSelected ? 7 : 2.8 + (signal.severity ?? 20) / 42) / Math.sqrt(camera.scale); return <g key={signal.id} className={isSelected ? 'selected' : ''} onClick={(event) => { event.stopPropagation(); onSelect(signal) }}><circle className="signal-halo" cx={cx} cy={cy} r={radius * 2.5} fill={colors[signal.type]}/><circle className="signal-core" cx={cx} cy={cy} r={radius} fill={colors[signal.type]} stroke="#efffff" strokeWidth={.7 / camera.scale}><title>{signal.title}</title></circle>{isSelected && <text x={cx + radius * 1.5} y={cy - radius * 1.5} fontSize={10 / camera.scale}>{signal.title}</text>}</g> })}</g>
       </g>
     </svg>
     {!world.length && !loadFailed && <div className="map-loading"><span/><strong>Loading onboard geography</strong></div>}
     {loadFailed && <div className="map-error"><strong>Onboard geography unavailable</strong><span>Signals remain available in Discover and Observer.</span></div>}
-    <div className="atlas-status"><span>ONBOARD ATLAS</span><small>{points.length} prioritized · {signals.length} available</small></div>
+    <div className="atlas-status"><span>{radarEnabled ? radarStatus === 'live' ? 'NOAA RADAR · LIVE' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING RADAR' : 'ONBOARD ATLAS'}</span><small>{radarEnabled ? 'MRMS · 5 min · US domains' : `${points.length} prioritized · ${signals.length} available`}</small></div>
     <div className="atlas-controls" role="group" aria-label="Map controls"><button onClick={(event) => { event.stopPropagation(); zoom(1.55) }} aria-label="Zoom in"><Plus/></button><button onClick={(event) => { event.stopPropagation(); zoom(1 / 1.55) }} aria-label="Zoom out"><Minus/></button><button onClick={(event) => { event.stopPropagation(); setCamera(initialCamera) }} aria-label="Show whole world"><LocateFixed/></button></div>
   </div>
 }

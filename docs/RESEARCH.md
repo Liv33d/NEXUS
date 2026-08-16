@@ -15,6 +15,7 @@
 | [vasturiano/three-globe](https://github.com/vasturiano/three-globe) | Globe texture and terrain presentation | Reused the example topology and night-sky assets with a separately sourced official NASA Earth texture | Two example image assets | MIT repository; NASA imagery is U.S. government source material |
 | [IFRCGo/GCDB](https://github.com/IFRCGo/GCDB) | Operational GDACS normalization | Studied Search API field handling and event/episode identity; implemented an independent bounded TypeScript adapter | No code copied | GPL project was research-only; no code reuse |
 | [nasa-gibs/worldview](https://github.com/nasa-gibs/worldview) | Geostationary layer catalog and temporal UI | Confirmed GOES East/West, Himawari, and EUMETSAT layer identifiers and studied time-aware layer organization | No code copied | Apache-2.0; research only |
+| [vasturiano/globe.gl day/night example](https://github.com/vasturiano/globe.gl/tree/master/example/day-night-cycle) | Physically legible day/night presentation | Adapted the shader-layer concept into a local day/city-light material with calculated solar position | Concept adapted; NEXUS shader written independently | MIT |
 
 Official USGS guidance recommends real-time GeoJSON feeds for automated display applications, so the first live adapter uses those feeds rather than catalog searches.
 
@@ -27,7 +28,7 @@ Official-source research also established these constraints:
 - Open‑Meteo provides no-key non-commercial access with documented request limits; NEXUS uses it only on demand for Observer context.
 - AviationWeather documents a 100-request/minute limit and explicitly disallows browser CORS, so it is not wired directly into the static PWA.
 - NOAA's official radar MapServer exposes MRMS/WSR-88D base reflectivity suitable for projected transparent overlays and reports an approximately five-minute update cadence.
-- NOAA also publishes a time-enabled MRMS ImageServer with a moving four-hour window. NEXUS uses explicit observation timestamps for an opt-in replay rather than downloading a permanent animation.
+- The current NOAA MRMS MapServer is not time-enabled. NEXUS requests one bounded EPSG:4326 transparent export, visibly labels it as current radar, and never manufactures replay frames.
 - NASA EOSDIS GIBS publishes keyless WMTS/WMS satellite imagery. Raw daily MODIS swaths were rejected as a continuous global background because coverage gaps and polar-orbit seams are visually misleading. Future imagery will use footprint-aware geostationary GOES/Himawari products with explicit timestamps.
 - RainViewer's public weather-map API was investigated but rejected as a core source because current personal/educational restrictions and service-transition history make the official NOAA/NASA combination a more durable default.
 - GDACS is a United Nations–European Commission cooperation framework, not a national warning authority. Its value is global impact screening; NEXUS therefore preserves its alert level while using cautious copy and independent-source labeling.
@@ -38,3 +39,5 @@ Official-source research also established these constraints:
 - The Space Devs Launch Library 2 is free within a documented 15-request-per-hour limit and is suitable for scheduled launch and space-event Signals.
 - CelesTrak publishes current unclassified GP orbital elements. NEXUS should retrieve only selected groups and propagate positions locally using a compatible SGP4 implementation.
 - ReliefWeb provides a long-running humanitarian report API. Its records must be labeled as reports and never substituted for verified physical observations.
+- Apple MapKit JS requires an Apple Maps identifier, private signing key, and signed developer token; the native globe/photogrammetry experience is not a keyless PWA primitive. Harvesting Apple tiles is not an acceptable workaround.
+- Google Photorealistic 3D Tiles require a billing-enabled Maps project and metered use beyond the free cap. They remain a possible future user-supplied integration, not a NEXUS core dependency.
