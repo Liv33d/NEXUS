@@ -100,7 +100,9 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .view-toggle { pointer-events:auto; display:flex; gap:3px; margin-top:14px; padding:4px; border:1px solid var(--line); border-radius:12px; background:rgba(5,9,10,.7); backdrop-filter:blur(16px) }
 .view-toggle button { width:34px; height:34px; display:grid; place-items:center; border-radius:9px; background:transparent; color:#657274 }
 .view-toggle button.active { color:var(--cyan); background:rgba(143,245,232,.12) }
+.view-toggle button:disabled { cursor:not-allowed; color:#3f494a; opacity:.7 }
 .view-toggle svg { width:16px; height:16px }
+.compatibility-notice { align-self:flex-start; margin-top:7px; padding:6px 8px; border:1px solid rgba(238,189,101,.22); border-radius:99px; background:rgba(45,34,18,.72); color:#d8b778; font:500 7px/1 "SFMono-Regular",ui-monospace,monospace; letter-spacing:.06em; text-transform:uppercase; backdrop-filter:blur(12px) }
 .spin { animation:spin .9s linear infinite }
 .provider-strip { pointer-events:auto; max-width:100%; display:flex; gap:5px; margin-top:6px; padding-bottom:4px; overflow-x:auto; scrollbar-width:none }
 .provider-strip::-webkit-scrollbar { display:none }
