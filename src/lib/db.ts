@@ -28,10 +28,18 @@ export const db = new NexusDatabase()
 export async function pruneDatabase(now = Date.now()): Promise<void> {
   const thirtyDaysAgo = now - 30 * 86400000
   const sixHoursAgo = now - 6 * 3600000
-  await db.transaction('rw', db.signals, db.cache, async () => {
-    await db.signals.where('expiresAt').below(now).delete()
-    await db.signals.where('timestamp').below(thirtyDaysAgo).filter((signal) => signal.type !== 'aircraft').delete()
-    await db.signals.where('timestamp').below(sixHoursAgo).filter((signal) => signal.type === 'aircraft').delete()
+  await db.transaction('rw', db.signals, db.discoveries, db.cache, async () => {
+    const savedDiscoveries = await db.discoveries.where('status').equals('saved').toArray()
+    const preservedSignalIds = new Set(savedDiscoveries.flatMap((discovery) => discovery.signalIds))
+    await db.signals.where('expiresAt').below(now).filter((signal) => !preservedSignalIds.has(signal.id)).delete()
+    await db.signals.where('timestamp').below(thirtyDaysAgo).filter((signal) => signal.type !== 'aircraft' && !preservedSignalIds.has(signal.id)).delete()
+    await db.signals.where('timestamp').below(sixHoursAgo).filter((signal) => signal.type === 'aircraft' && !preservedSignalIds.has(signal.id)).delete()
     await db.cache.where('expiresAt').below(now).delete()
+  })
+}
+
+export async function eraseDatabase(): Promise<void> {
+  await db.transaction('rw', db.signals, db.discoveries, db.providerStatus, db.settings, db.cache, async () => {
+    await Promise.all([db.signals.clear(), db.discoveries.clear(), db.providerStatus.clear(), db.settings.clear(), db.cache.clear()])
   })
 }
