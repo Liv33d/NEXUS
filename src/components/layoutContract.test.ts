@@ -12,6 +12,12 @@ describe('mobile interaction layout contract', () => {
     expect(styles).not.toMatch(/\.earth-command-rail|\.globe-quick-lenses|\.view-toggle|\.map-mode-switch/)
   })
 
+  it('enters the Solar System by continuing outward from Earth', () => {
+    expect(app).toContain('onRequestSolar={enterSolarSystem}')
+    expect(app).not.toMatch(/solar-launch|>OPEN<\/b>/)
+    expect(styles).toContain('.space-transition-cue')
+  })
+
   it('uses an intentional landscape inspector instead of stacking portrait sheets', () => {
     expect(styles).toContain('@media (orientation: landscape) and (max-height: 600px)')
     expect(styles).toMatch(/\.command-sheet \{ top:calc\(54px[^}]+left:auto[^}]+width:min\(390px,46vw\)/)

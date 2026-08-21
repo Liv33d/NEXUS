@@ -32,7 +32,7 @@ NEXUS is a static, local-first Progressive Web App. The core application require
 - Active NHC geometry and selected CelesTrak OMM elements are normalized during a scheduled GitHub Pages build. These small same-origin snapshots solve upstream CORS constraints and enforce provider-friendly polling without adding a proprietary runtime backend.
 - Observer's orbital propagation runs in a dedicated worker. GBIF LIFE context is bounded, permissive-license filtered, and fetched only for a selected place.
 - Migration Watch is opt-in and lazy. It compares two bounded 14-day GBIF Aves samples, rejects restrictive/unknown licenses, aggregates observations to H3 resolution 3, and renders centroid shifts as explicitly derived corridors. Raw wildlife coordinates are not exposed on the globe.
-- Solar System is a lazy-loaded renderer isolated from the long-lived Earth renderer. Astronomy Engine calculates heliocentric J2000 positions locally; distances and body radii are visually scaled and disclosed in-product.
+- Solar System is a lazy-loaded renderer isolated from the long-lived Earth renderer. It is entered by continuing to zoom outward from the main globe and begins focused on Earth's calculated heliocentric position; zooming back into Earth returns to the geographic renderer. Astronomy Engine calculates heliocentric J2000 positions locally; distances and body radii are visually scaled and disclosed in-product.
 
 Provider failure is isolated. The application continues with cached data and its deterministic Demo Mode.
 
