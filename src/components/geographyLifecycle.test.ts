@@ -21,6 +21,17 @@ describe('geographic renderer lifecycle regression guards', () => {
   it('passes the same camera state into globe and map', () => {
     const app = source('../App.tsx')
     expect(app.match(/initialView=\{geographicView\}/g)).toHaveLength(2)
-    expect(app.match(/onViewChange=\{setGeographicView\}/g)).toHaveLength(2)
+    expect(app).toContain('onViewChange={handleGlobeViewChange}')
+    expect(app).toContain('onViewChange={handleMapViewChange}')
+  })
+
+  it('uses a single automatic Earth surface instead of competing mode controls', () => {
+    const app = source('../App.tsx')
+    const map = source('./MapView.tsx')
+    expect(app).not.toContain('view-toggle')
+    expect(app).not.toContain('globe-quick-lenses')
+    expect(map).not.toContain('map-mode-switch')
+    expect(app).toContain('shouldEnterDetailedMap(next)')
+    expect(source('./ConnectedMapView.tsx')).toContain('shouldReturnToGlobe(map.getZoom())')
   })
 })
