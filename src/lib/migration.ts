@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { fetchWithTimeout, providerHttpError } from '../providers/types'
 
 const AVES_TAXON_KEY = '212'
-const CACHE_KEY = 'nexus:migration:v1'
+const CACHE_KEY = 'nexus:migration:v2'
 const CACHE_TTL = 6 * 60 * 60 * 1000
 const MAX_RECORDS_PER_WINDOW = 300
 const WINDOW_PAGES = 2
@@ -40,12 +40,25 @@ export interface MigrationCorridor {
   endLongitude: number
   priorObservations: number
   recentObservations: number
+  distanceKm: number
+  direction: string
   confidence: number
+}
+
+export interface MigrationSpeciesSummary {
+  id: string
+  species: string
+  commonName?: string
+  recentObservations: number
+  priorObservations: number
+  latitude: number
+  longitude: number
 }
 
 export interface MigrationSnapshot {
   cells: MigrationActivityCell[]
   corridors: MigrationCorridor[]
+  species: MigrationSpeciesSummary[]
   recentRecordCount: number
   priorRecordCount: number
   retrievedAt: number
@@ -106,6 +119,17 @@ function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: n
   return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
 }
 
+function movementDirection(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): string {
+  const radians = Math.PI / 180
+  const dLon = (b.longitude - a.longitude) * radians
+  const lat1 = a.latitude * radians
+  const lat2 = b.latitude * radians
+  const y = Math.sin(dLon) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)
+  const bearing = (Math.atan2(y, x) / radians + 360) % 360
+  return ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'][Math.round(bearing / 45) % 8]!
+}
+
 export function buildMigrationSnapshot(recentInput: BirdRecord[], priorInput: BirdRecord[], now = Date.now()): MigrationSnapshot {
   const recent = recentInput.filter(usable)
   const prior = priorInput.filter(usable)
@@ -128,6 +152,19 @@ export function buildMigrationSnapshot(recentInput: BirdRecord[], priorInput: Bi
   }
   const recentSpecies = group(recent)
   const priorSpecies = group(prior)
+  const species: MigrationSpeciesSummary[] = [...recentSpecies.entries()].map(([speciesKey, current]) => {
+    const previous = priorSpecies.get(speciesKey) ?? []
+    const location = centroid(current)
+    return {
+      id: `gbif-bird-${speciesKey}`,
+      species: current[0]!.species ?? current[0]!.scientificName!,
+      commonName: current.find((record) => record.vernacularName)?.vernacularName,
+      recentObservations: current.length,
+      priorObservations: previous.length,
+      latitude: location.latitude,
+      longitude: location.longitude,
+    }
+  }).sort((a, b) => b.recentObservations - a.recentObservations || b.priorObservations - a.priorObservations).slice(0, 32)
   const corridors: MigrationCorridor[] = []
   for (const [speciesKey, current] of recentSpecies) {
     const previous = priorSpecies.get(speciesKey)
@@ -146,6 +183,8 @@ export function buildMigrationSnapshot(recentInput: BirdRecord[], priorInput: Bi
       endLongitude: end.longitude,
       priorObservations: previous.length,
       recentObservations: current.length,
+      distanceKm: Math.round(distance),
+      direction: movementDirection(start, end),
       confidence: Math.min(0.82, 0.35 + Math.min(current.length, previous.length) / 30),
     })
   }
@@ -154,6 +193,7 @@ export function buildMigrationSnapshot(recentInput: BirdRecord[], priorInput: Bi
   return {
     cells,
     corridors: corridors.slice(0, 24),
+    species,
     recentRecordCount: recent.length,
     priorRecordCount: prior.length,
     retrievedAt: now,
