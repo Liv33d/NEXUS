@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
-import { AdditiveBlending, Mesh, MeshBasicMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, TextureLoader, Vector2 } from 'three'
+import { Mesh, MeshBasicMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, TextureLoader, Vector2 } from 'three'
 import { noaaGeoColorImage, noaaRadarImage } from '../lib/mapLayers'
 import { subsolarPoint } from '../lib/solar'
 import { GLOBE_CITIES, type GlobeCity } from '../data/cities'
@@ -279,14 +279,25 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
     const texture = new TextureLoader().setCrossOrigin('anonymous').load(noaaGeoColorImage(), (loaded) => {
       if (cancelled) { loaded.dispose(); return }
       loaded.colorSpace = SRGBColorSpace
-      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.003, 96, 64), new MeshBasicMaterial({ map: loaded, transparent: true, opacity: 0.34, depthWrite: false, blending: AdditiveBlending }))
+      // NOAA's combined GOES GeoColor frame contains black/no-data pixels and
+      // hard sector edges. A direct raster material projects those gaps as dark
+      // wedges across Earth. This shader discards no-data, suppresses coloured
+      // land/ocean content, and retains only bright, low-chroma cloud structure.
+      const material = new ShaderMaterial({
+        uniforms: { cloudTexture: { value: loaded }, opacity: { value: 0.48 } },
+        vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+        fragmentShader: `uniform sampler2D cloudTexture;uniform float opacity;varying vec2 vUv;void main(){vec3 c=texture2D(cloudTexture,vUv).rgb;float hi=max(c.r,max(c.g,c.b));float lo=min(c.r,min(c.g,c.b));float lum=dot(c,vec3(.2126,.7152,.0722));float neutral=1.0-smoothstep(.08,.34,hi-lo);float cloud=smoothstep(.27,.72,lum)*mix(.38,1.0,neutral)*smoothstep(.035,.13,hi);if(cloud<.025)discard;vec3 cloudColor=mix(c,vec3(.94,.98,1.0),.72);gl_FragColor=vec4(cloudColor,cloud*opacity);}`,
+        transparent: true,
+        depthWrite: false,
+      })
+      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.003, 72, 48), material)
       mesh.renderOrder = 3
       globe.scene().add(mesh)
       setSatelliteStatus('live')
     }, undefined, () => { if (!cancelled) setSatelliteStatus('error') })
     return () => {
       cancelled = true
-      if (mesh) { globe.scene().remove(mesh); mesh.geometry.dispose(); (mesh.material as MeshBasicMaterial).dispose() }
+      if (mesh) { globe.scene().remove(mesh); mesh.geometry.dispose(); (mesh.material as ShaderMaterial).dispose() }
       texture.dispose()
     }
   }, [batterySaver, ready, satelliteEnabled])
