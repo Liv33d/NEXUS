@@ -49,11 +49,20 @@ export function dedupeLocationLabel(value: string): string {
 
 export function observerPlaceSubtitle(place: Pick<GeocodingResult, 'name' | 'admin1' | 'admin2' | 'admin3' | 'admin4' | 'country' | 'country_code'>): string {
   const localityKey = normalizedText(place.name)
-  const genericAdminWords = /\b(city|county|district|municipality|municipio|borough|parish|prefecture|province|region|stadt|departement|department|departamento)\b/g
-  const administrative = uniqueLabels([place.admin1, place.admin2, place.admin3, place.admin4], [place.name]).filter((value) => normalizedText(value).replace(genericAdminWords, '').replace(/\s+/g, ' ').trim() !== localityKey)
-  const country = uniqueLabels([place.country ?? place.country_code], [place.name, ...administrative])[0]
+  const genericAdminWords = /\b(city|county|district|municipality|municipio|borough|barrio|ward|township|commune|parish|prefecture|province|region|stadt|departement|department|departamento)\b/g
+  const sublocalityWords = /\b(barrio|ward|township|commune)\b/
+  const administrative = uniqueLabels([place.admin1, place.admin2, place.admin3, place.admin4], [place.name]).filter((value) => {
+    const normalized = normalizedText(value)
+    return !sublocalityWords.test(normalized) && normalized.replace(genericAdminWords, '').replace(/\s+/g, ' ').trim() !== localityKey
+  })
+  let country = place.country ?? place.country_code
+  const code = place.country_code?.toUpperCase() ?? (country?.length === 2 ? country.toUpperCase() : undefined)
+  if (code && (!country || country.toUpperCase() === code)) {
+    try { country = new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? country } catch { /* Retain provider label on older Safari. */ }
+  }
+  const countryLabel = uniqueLabels([country], [place.name, ...administrative])[0]
   // The first administrative level is the most recognizable disambiguator worldwide.
-  return uniqueLabels([administrative[0], country], [place.name]).join(', ')
+  return uniqueLabels([administrative[0], countryLabel], [place.name]).join(', ')
 }
 
 export function parseObserverPlaceQuery(query: string) {
