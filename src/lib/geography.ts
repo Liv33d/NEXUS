@@ -5,6 +5,8 @@ export interface GeographicView {
 }
 
 export const DEFAULT_GEOGRAPHIC_VIEW: GeographicView = { latitude: 18, longitude: -45, altitude: 2.05 }
+export const GLOBE_TO_DETAIL_ALTITUDE = 0.22
+export const DETAIL_TO_GLOBE_ZOOM = 2.15
 
 export function clampGeographicView(view: GeographicView): GeographicView {
   return {
@@ -24,4 +26,12 @@ export function mapZoomToAltitude(zoom: number): number {
 
 export function geographicViewsDiffer(a: GeographicView, b: GeographicView): boolean {
   return Math.abs(a.latitude - b.latitude) >= 0.25 || Math.abs(a.longitude - b.longitude) >= 0.25 || Math.abs(a.altitude - b.altitude) >= 0.015
+}
+
+export function shouldEnterDetailedMap(view: GeographicView): boolean {
+  return view.altitude <= GLOBE_TO_DETAIL_ALTITUDE
+}
+
+export function shouldReturnToGlobe(mapZoom: number): boolean {
+  return mapZoom <= DETAIL_TO_GLOBE_ZOOM
 }
