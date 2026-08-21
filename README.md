@@ -90,6 +90,7 @@ NEXUS builds to static files in `dist/`. The included `Deploy NEXUS` workflow pu
 - Planetary Memory is device-local and needs seven observed calendar days before it affects Pulse ranking; it intentionally does not pretend a new install has a historical baseline.
 - FIRMS requires the user to enter a free NASA MAP key locally; it is never committed or bundled.
 - Moving-track reconstruction and high-frequency geostationary satellite animation remain sequenced work; global replay currently replays stored evidence timestamps.
+- The strict implementation and recovery audit is maintained in [`docs/RECOVERY-AUDIT.md`](docs/RECOVERY-AUDIT.md); researched or planned capability is never counted as implemented.
 
 See [`docs/EVOLUTION.md`](docs/EVOLUTION.md) for current build/defer/experiment/reject decisions, [`docs/ROADMAP.md`](docs/ROADMAP.md) for sequenced expansion, and [`docs/RESEARCH.md`](docs/RESEARCH.md) for open-source research and license notes.
 

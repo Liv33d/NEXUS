@@ -14,6 +14,8 @@ export interface WatchRule {
     radiusKm: number
     minimumSeverity: number
     signalTypes?: SignalType[]
+    cooldownMs?: number
+    dedupeWindowMs?: number
   }
   delivery: 'in-app'
 }
@@ -22,4 +24,19 @@ export interface WatchMatch {
   ruleId: string
   evaluatedAt: number
   signalIds: string[]
+}
+
+export interface WatchTrigger {
+  id: string
+  ruleId: string
+  signalId: string
+  triggeredAt: number
+  lastSeenAt: number
+  state: 'new' | 'seen' | 'expired'
+  delivery: 'in-app'
+}
+
+export interface WatchDeliveryAdapter {
+  id: WatchRule['delivery']
+  deliver(triggers: WatchTrigger[]): Promise<void>
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
 import { AdditiveBlending, Mesh, MeshBasicMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, TextureLoader, Vector2 } from 'three'
 import { noaaGeoColorImage, noaaRadarImage } from '../lib/mapLayers'
@@ -6,6 +6,7 @@ import { subsolarPoint } from '../lib/solar'
 import { GLOBE_CITIES, type GlobeCity } from '../data/cities'
 import type { Signal } from '../types/signal'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
+import { clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, geographicViewsDiffer, type GeographicView } from '../lib/geography'
 
 interface Props {
   signals: Signal[]
@@ -20,6 +21,8 @@ interface Props {
   atmosphereEnabled?: boolean
   labelsEnabled?: boolean
   qualityMode?: 'automatic' | 'quality' | 'battery'
+  initialView?: GeographicView
+  onViewChange?(view: GeographicView): void
 }
 
 interface EarthLabel { name: string; lat: number; lng: number; kind: 'land' | 'water' | 'place'; population?: number; capital?: boolean }
@@ -97,11 +100,15 @@ function createEarthMaterial() {
   })
 }
 
-export default function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic' }: Props) {
+function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange }: Props) {
   const ref = useRef<GlobeMethods | undefined>(undefined)
-  const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight })
+  const hostRef = useRef<HTMLDivElement>(null)
+  const onReadyRef = useRef(onReady)
+  const onViewChangeRef = useRef(onViewChange)
+  const [size, setSize] = useState({ width: Math.max(1, window.innerWidth), height: Math.max(1, window.innerHeight) })
   const [ready, setReady] = useState(false)
-  const [viewpoint, setViewpoint] = useState<GlobeViewpoint>({ lat: 18, lng: -45, altitude: 2.05 })
+  const [contextLost, setContextLost] = useState(false)
+  const [viewpoint, setViewpoint] = useState<GlobeViewpoint>({ lat: initialView.latitude, lng: initialView.longitude, altitude: initialView.altitude })
   const [countries, setCountries] = useState<Array<Feature<Polygon | MultiPolygon>>>([])
   const [radarStatus, setRadarStatus] = useState<'loading' | 'live' | 'error'>('loading')
   const [satelliteStatus, setSatelliteStatus] = useState<'loading' | 'live' | 'error'>('loading')
@@ -119,10 +126,26 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
     return path.length >= 2 ? [{ signal, points: path.map(([lng, lat]) => ({ lat, lng })) }] : []
   }), [signals])
 
+  useEffect(() => { onReadyRef.current = onReady; onViewChangeRef.current = onViewChange }, [onReady, onViewChange])
+
   useEffect(() => {
-    const resize = () => setSize({ width: window.innerWidth, height: window.innerHeight })
-    window.addEventListener('resize', resize)
-    return () => window.removeEventListener('resize', resize)
+    const host = hostRef.current
+    if (!host) return
+    let frame = 0
+    const resize = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => {
+        const rect = host.getBoundingClientRect()
+        const width = Math.max(1, Math.round(rect.width))
+        const height = Math.max(1, Math.round(rect.height))
+        setSize((current) => current.width === width && current.height === height ? current : { width, height })
+      })
+    }
+    const observer = new ResizeObserver(resize)
+    observer.observe(host)
+    window.visualViewport?.addEventListener('resize', resize, { passive: true })
+    resize()
+    return () => { observer.disconnect(); window.visualViewport?.removeEventListener('resize', resize); window.cancelAnimationFrame(frame) }
   }, [])
 
   useEffect(() => {
@@ -139,6 +162,24 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
     if (!ready) return
     const pixelRatioCap = qualityMode === 'battery' ? 1 : qualityMode === 'quality' ? 2 : 1.5
     ref.current?.renderer().setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap))
+  }, [qualityMode, ready])
+
+  useEffect(() => {
+    if (!ready) return
+    const globe = ref.current
+    const renderer = globe?.renderer()
+    const canvas = renderer?.domElement
+    if (!globe || !renderer || !canvas) return
+    const lost = (event: Event) => { event.preventDefault(); globe.pauseAnimation(); setContextLost(true) }
+    const restored = () => {
+      const pixelRatioCap = qualityMode === 'battery' ? 1 : qualityMode === 'quality' ? 2 : 1.5
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap))
+      setContextLost(false)
+      if (document.visibilityState === 'visible') globe.resumeAnimation()
+    }
+    canvas.addEventListener('webglcontextlost', lost)
+    canvas.addEventListener('webglcontextrestored', restored)
+    return () => { canvas.removeEventListener('webglcontextlost', lost); canvas.removeEventListener('webglcontextrestored', restored) }
   }, [qualityMode, ready])
 
   useEffect(() => () => {
@@ -173,6 +214,24 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
     controls.minDistance = 104
     controls.maxDistance = 440
   }, [autoRotate, batterySaver, selected, ready])
+
+  useEffect(() => {
+    if (!ready) return
+    const globe = ref.current
+    const controls = globe?.controls()
+    if (!globe || !controls) return
+    const commitView = () => {
+      const point = globe.pointOfView()
+      const next = clampGeographicView({ latitude: point.lat, longitude: point.lng, altitude: point.altitude })
+      setViewpoint((current) => {
+        const normalized = { latitude: current.lat, longitude: current.lng, altitude: current.altitude }
+        return geographicViewsDiffer(normalized, next) ? { lat: next.latitude, lng: next.longitude, altitude: next.altitude } : current
+      })
+      onViewChangeRef.current?.(next)
+    }
+    controls.addEventListener('end', commitView)
+    return () => controls.removeEventListener('end', commitView)
+  }, [ready])
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -232,7 +291,7 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
     }
   }, [batterySaver, ready, satelliteEnabled])
 
-  return <div className="globe-stage" role="img" aria-label={`Interactive Earth showing ${points.length} visible signals`}>
+  return <div ref={hostRef} className="globe-stage" role="img" aria-label={`Interactive Earth showing ${points.length} visible signals`}>
     <Globe
       ref={ref} width={size.width} height={size.height} backgroundColor="rgba(0,0,0,0)" globeMaterial={earthMaterial}
       backgroundImageUrl={`${import.meta.env.BASE_URL}night-sky.png`} showAtmosphere={atmosphereEnabled} atmosphereColor="#9eefff" atmosphereAltitude={0.2}
@@ -251,21 +310,24 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
       pathsData={forecastPaths} pathPoints={(item) => (item as { points: Array<{ lat: number; lng: number }> }).points}
       pathPointLat={(point) => (point as { lat: number }).lat} pathPointLng={(point) => (point as { lng: number }).lng}
       pathColor={() => ['rgba(160,220,255,.95)', 'rgba(143,245,232,.42)']} pathStroke={1.2} pathDashLength={0.08} pathDashGap={0.045} pathDashAnimateTime={batterySaver ? 0 : 5200} pathPointAlt={() => 0.018}
-      onZoom={(view) => setViewpoint((current) => Math.abs(current.altitude - view.altitude) < 0.025 && Math.abs(current.lat - view.lat) < 1 && Math.abs(current.lng - view.lng) < 1 ? current : view)}
       onGlobeReady={() => {
         const globe = ref.current
         const renderer = globe?.renderer()
         const pixelRatioCap = qualityMode === 'battery' ? 1 : qualityMode === 'quality' ? 2 : 1.5
         renderer?.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap))
         if (renderer) renderer.outputColorSpace = SRGBColorSpace
-        globe?.pointOfView({ lat: 18, lng: -45, altitude: 2.05 }, 900)
-        setReady(true); onReady()
+        const initial = clampGeographicView(initialView)
+        globe?.pointOfView({ lat: initial.latitude, lng: initial.longitude, altitude: initial.altitude }, 0)
+        setReady(true); onReadyRef.current()
       }}
     />
     <div className="environment-status-stack">
       {satelliteEnabled && <div className={`radar-provenance satellite ${satelliteStatus}`}><i/><span>{batterySaver ? 'SATELLITE PAUSED' : satelliteStatus === 'live' ? 'NOAA GEOCOLOR · LATEST' : satelliteStatus === 'error' ? 'SATELLITE UNAVAILABLE' : 'ACQUIRING SATELLITE'}</span></div>}
       {radarEnabled && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED' : radarStatus === 'live' ? 'NOAA RADAR · 5 MIN' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
     </div>
+    {contextLost && <div className="map-loading renderer-recovery"><span/><strong>Restoring Earth</strong><small>Graphics context was interrupted</small></div>}
     <div className="globe-vignette" />
   </div>
 }
+
+export default memo(GlobeView)

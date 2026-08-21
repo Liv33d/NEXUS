@@ -6,6 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { noaaGeoColorTileTemplate, noaaRadarTileTemplate } from '../lib/mapLayers'
 import { signalAreasGeoJSON } from '../lib/geospatial'
 import type { Signal } from '../types/signal'
+import { altitudeToMapZoom, clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, mapZoomToAltitude, type GeographicView } from '../lib/geography'
 
 setWorkerUrl(mapWorkerUrl)
 
@@ -17,6 +18,8 @@ interface Props {
   satelliteEnabled?: boolean
   mapTheme?: 'dark' | 'street'
   onFallback(): void
+  initialView?: GeographicView
+  onViewChange?(view: GeographicView): void
 }
 
 type SignalProperties = { id: string; title: string; type: Signal['type']; severity: number }
@@ -53,27 +56,31 @@ function removeWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satell
   if (map.getSource(id)) map.removeSource(id)
 }
 
-export default function ConnectedMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', onFallback }: Props) {
+export default function ConnectedMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const signalsRef = useRef(signals)
   const onSelectRef = useRef(onSelect)
+  const onViewChangeRef = useRef(onViewChange)
+  const initialViewRef = useRef(initialView)
   const [ready, setReady] = useState(false)
+  const [contextLost, setContextLost] = useState(false)
   const [globalRadar, setGlobalRadar] = useState<{ tile: string; time: number }>()
   const collection = useMemo(() => signalCollection(signals), [signals])
   const areas = useMemo(() => signalAreasGeoJSON(signals), [signals])
   const tracks = useMemo(() => forecastTracks(signals), [signals])
 
-  useEffect(() => { signalsRef.current = signals; onSelectRef.current = onSelect }, [onSelect, signals])
+  useEffect(() => { signalsRef.current = signals; onSelectRef.current = onSelect; onViewChangeRef.current = onViewChange }, [onSelect, onViewChange, signals])
 
   useEffect(() => {
     if (!hostRef.current) return
     let settled = false
     const timeout = window.setTimeout(() => { if (!settled) onFallback() }, 14_000)
+    const initial = clampGeographicView(initialViewRef.current)
     const map = new MapLibreMap({
       container: hostRef.current,
       style: `https://tiles.openfreemap.org/styles/${mapTheme === 'street' ? 'liberty' : 'dark'}`,
-      center: [-20, 20], zoom: 1.35, minZoom: 0.75, maxZoom: 16,
+      center: [initial.longitude, initial.latitude], zoom: altitudeToMapZoom(initial.altitude), minZoom: 0.75, maxZoom: 16,
       pitchWithRotate: false, dragRotate: false, touchPitch: false,
       attributionControl: {},
     })
@@ -110,10 +117,28 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
       }
       setReady(true)
     })
+    const commitView = () => {
+      const center = map.getCenter()
+      onViewChangeRef.current?.(clampGeographicView({ latitude: center.lat, longitude: center.lng, altitude: mapZoomToAltitude(map.getZoom()) }))
+    }
+    map.on('moveend', commitView)
+    let resizeFrame = 0
+    const resize = () => {
+      window.cancelAnimationFrame(resizeFrame)
+      resizeFrame = window.requestAnimationFrame(() => map.resize())
+    }
+    const resizeObserver = new ResizeObserver(resize)
+    resizeObserver.observe(hostRef.current)
+    window.visualViewport?.addEventListener('resize', resize, { passive: true })
+    const canvas = map.getCanvas()
+    const contextLostHandler = (event: Event) => { event.preventDefault(); setContextLost(true) }
+    const contextRestoredHandler = () => { setContextLost(false); map.resize() }
+    canvas.addEventListener('webglcontextlost', contextLostHandler)
+    canvas.addEventListener('webglcontextrestored', contextRestoredHandler)
     map.on('error', (event) => {
       if (!settled && /style|source|worker|webgl/i.test(String(event.error?.message))) { settled = true; window.clearTimeout(timeout); onFallback() }
     })
-    return () => { settled = true; window.clearTimeout(timeout); map.remove(); mapRef.current = null }
+    return () => { settled = true; window.clearTimeout(timeout); window.cancelAnimationFrame(resizeFrame); resizeObserver.disconnect(); window.visualViewport?.removeEventListener('resize', resize); canvas.removeEventListener('webglcontextlost', contextLostHandler); canvas.removeEventListener('webglcontextrestored', contextRestoredHandler); map.remove(); mapRef.current = null }
   }, [mapTheme, onFallback])
 
   useEffect(() => {
@@ -162,5 +187,5 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
     mapRef.current?.flyTo({ center: [selected.location.longitude, selected.location.latitude], zoom: Math.max(mapRef.current.getZoom(), 5), duration: 1300, essential: true })
   }, [ready, selected])
 
-  return <div className="map-stage"><div ref={hostRef} className="maplibre-host" aria-label={`Detailed interactive map showing ${collection.features.length} signals`}/>{!ready && <div className="map-loading"><span/><strong>Acquiring detailed map</strong><small>OpenFreeMap · no account or key</small></div>}<div className="connected-map-status"><span>{radarEnabled ? globalRadar ? 'GLOBAL RADAR · LIVE' : 'NOAA RADAR · LIVE' : satelliteEnabled ? 'SATELLITE · LATEST' : 'DETAILED MAP · LIVE'}</span><small>{radarEnabled && globalRadar ? `RainViewer · ${new Date(globalRadar.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'OpenStreetMap · OpenFreeMap'}</small></div></div>
+  return <div className="map-stage"><div ref={hostRef} className="maplibre-host" aria-label={`Detailed interactive map showing ${collection.features.length} signals`}/>{(!ready || contextLost) && <div className="map-loading"><span/><strong>{contextLost ? 'Restoring detailed map' : 'Acquiring detailed map'}</strong><small>{contextLost ? 'Graphics context was interrupted' : 'OpenFreeMap · no account or key'}</small></div>}<div className="connected-map-status"><span>{radarEnabled ? globalRadar ? 'GLOBAL RADAR · LIVE' : 'NOAA RADAR · LIVE' : satelliteEnabled ? 'SATELLITE · LATEST' : 'DETAILED MAP · LIVE'}</span><small>{radarEnabled && globalRadar ? `RainViewer · ${new Date(globalRadar.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'OpenStreetMap · OpenFreeMap'}</small></div></div>
 }
