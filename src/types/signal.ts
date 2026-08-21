@@ -72,6 +72,16 @@ export interface Discovery {
     peakSeverity: number
     evidence: number
     diversity: number
+    deviation?: number
+  }
+  memory?: {
+    status: 'learning' | 'established'
+    currentCount: number
+    baselineCount?: number
+    deviationPercent?: number
+    observedDays: number
+    regionCount: number
+    method: string
   }
   level: 'routine' | 'elevated' | 'unusual' | 'significant' | 'exceptional'
   center?: { latitude: number; longitude: number }
@@ -82,6 +92,18 @@ export interface Discovery {
   tags: string[]
   savedAt?: number
   notes?: string
+}
+
+export interface MemoryBucket {
+  id: string
+  day: string
+  h3Index: string
+  type: SignalType
+  provider: string
+  count: number
+  severitySum: number
+  maxSeverity: number
+  updatedAt: number
 }
 
 export interface ProviderStatus {

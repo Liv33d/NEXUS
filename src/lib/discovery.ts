@@ -1,7 +1,8 @@
 import { areNeighborCells, getResolution } from 'h3-js'
-import type { Discovery, Relationship, Signal } from '../types/signal'
+import type { Discovery, MemoryBucket, Relationship, Signal } from '../types/signal'
 import { clamp, severityLabel } from './signal'
 import { distanceKm, weightedCenter } from './geo'
+import { deviationWeight, discoveryMemory } from './memory'
 
 const MAX_DISTANCE_KM = 300
 const MAX_TIME_MS = 6 * 60 * 60 * 1000
@@ -78,7 +79,7 @@ function discoveryName(signals: Signal[]): string {
   return `Unusual Activity Near ${place}`
 }
 
-export function buildDiscoveries(signals: Signal[], now = Date.now()): Discovery[] {
+export function buildDiscoveries(signals: Signal[], now = Date.now(), memoryBuckets: MemoryBucket[] = []): Discovery[] {
   const recent = signals.filter((signal) => now - signal.timestamp <= 7 * 86400000)
   const relationships = buildRelationships(recent)
   const parent = new Map<string, string>()
@@ -116,11 +117,15 @@ export function buildDiscoveries(signals: Signal[], now = Date.now()): Discovery
     const maximumSeverity = Math.max(...members.map((signal) => signal.severity ?? 20))
     const evidenceWeight = Math.min(Math.log2(members.length + 1) * 7, 21)
     const diversityWeight = Math.max(0, sourceDiversity - 1) * 12 + Math.max(0, typeDiversity - 1) * 5
+    const currentMembers = members.filter((signal) => now - signal.timestamp <= 86400000)
+    const memory = discoveryMemory(currentMembers.length ? currentMembers : members, memoryBuckets, now)
+    const baselineWeight = deviationWeight(memory.deviationPercent)
     const rawComponents = {
-      typicalSeverity: averageSeverity * 0.38,
-      peakSeverity: maximumSeverity * 0.28,
+      typicalSeverity: averageSeverity * 0.32,
+      peakSeverity: maximumSeverity * 0.24,
       evidence: evidenceWeight,
       diversity: diversityWeight,
+      deviation: baselineWeight,
     }
     const rawScore = Object.values(rawComponents).reduce((sum, value) => sum + value, 0)
     const score = Math.round(clamp(rawScore))
@@ -130,6 +135,7 @@ export function buildDiscoveries(signals: Signal[], now = Date.now()): Discovery
       peakSeverity: Math.round(rawComponents.peakSeverity * componentScale),
       evidence: Math.round(rawComponents.evidence * componentScale),
       diversity: Math.round(rawComponents.diversity * componentScale),
+      deviation: Math.round(rawComponents.deviation * componentScale),
     }
     const center = weightedCenter(members.flatMap((signal) => signal.location ? [signal.location] : []))
     const types = [...new Set(members.map((signal) => signal.type))]
@@ -140,6 +146,7 @@ export function buildDiscoveries(signals: Signal[], now = Date.now()): Discovery
       description: `${members.length} observable signal${members.length === 1 ? '' : 's'} across ${sourceDiversity} source${sourceDiversity === 1 ? '' : 's'}. Correlation indicates proximity, not causation.`,
       score,
       scoreComponents,
+      memory,
       level: severityLabel(score),
       center,
       signalIds: [...ids],

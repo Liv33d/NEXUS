@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { FeatureCollection, Point } from 'geojson'
+import type { FeatureCollection, LineString, Point } from 'geojson'
 import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from 'maplibre-gl'
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { noaaGeoColorTileTemplate, noaaRadarTileTemplate } from '../lib/mapLayers'
+import { signalAreasGeoJSON } from '../lib/geospatial'
 import type { Signal } from '../types/signal'
 
 setWorkerUrl(mapWorkerUrl)
@@ -32,6 +33,15 @@ function signalCollection(signals: Signal[]): FeatureCollection<Point, SignalPro
   }
 }
 
+function forecastTracks(signals: Signal[]): FeatureCollection<LineString, { id: string; title: string }> {
+  return { type: 'FeatureCollection', features: signals.flatMap((signal) => {
+    const value = signal.attributes.forecastTrack
+    if (!Array.isArray(value)) return []
+    const coordinates = value.filter((item): item is [number, number] => Array.isArray(item) && item.length >= 2 && typeof item[0] === 'number' && typeof item[1] === 'number' && Math.abs(item[0]) <= 180 && Math.abs(item[1]) <= 90)
+    return coordinates.length >= 2 ? [{ type: 'Feature' as const, properties: { id: signal.id, title: signal.title }, geometry: { type: 'LineString' as const, coordinates } }] : []
+  }) }
+}
+
 function addWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satellite', tiles: string[], opacity: number, attribution?: string) {
   if (map.getSource(id)) return
   map.addSource(id, { type: 'raster', tiles, tileSize: 256, attribution: attribution ?? (id === 'nexus-radar' ? 'Weather: NOAA/NWS' : 'Satellite: NOAA/NESDIS') })
@@ -51,6 +61,8 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
   const [ready, setReady] = useState(false)
   const [globalRadar, setGlobalRadar] = useState<{ tile: string; time: number }>()
   const collection = useMemo(() => signalCollection(signals), [signals])
+  const areas = useMemo(() => signalAreasGeoJSON(signals), [signals])
+  const tracks = useMemo(() => forecastTracks(signals), [signals])
 
   useEffect(() => { signalsRef.current = signals; onSelectRef.current = onSelect }, [onSelect, signals])
 
@@ -71,6 +83,11 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
       settled = true
       window.clearTimeout(timeout)
       map.addSource('nexus-signals', { type: 'geojson', data: signalCollection(signalsRef.current), cluster: true, clusterMaxZoom: 7, clusterRadius: 42 })
+      map.addSource('nexus-areas', { type: 'geojson', data: signalAreasGeoJSON(signalsRef.current) })
+      map.addLayer({ id: 'nexus-area-fill', type: 'fill', source: 'nexus-areas', paint: { 'fill-color': '#74b7ff', 'fill-opacity': .13 } })
+      map.addLayer({ id: 'nexus-area-outline', type: 'line', source: 'nexus-areas', paint: { 'line-color': '#9ad2ff', 'line-width': 1.4, 'line-opacity': .82 } })
+      map.addSource('nexus-tracks', { type: 'geojson', data: forecastTracks(signalsRef.current) })
+      map.addLayer({ id: 'nexus-track-lines', type: 'line', source: 'nexus-tracks', paint: { 'line-color': '#d7f0ff', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': .9 } })
       map.addLayer({ id: 'nexus-clusters', type: 'circle', source: 'nexus-signals', filter: ['has', 'point_count'], paint: { 'circle-color': ['step', ['get', 'point_count'], '#315f5d', 25, '#367d77', 100, '#d08d55'], 'circle-radius': ['step', ['get', 'point_count'], 15, 25, 20, 100, 27], 'circle-stroke-width': 1.5, 'circle-stroke-color': '#bffff6', 'circle-opacity': .88 } })
       map.addLayer({ id: 'nexus-cluster-count', type: 'symbol', source: 'nexus-signals', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 10 }, paint: { 'text-color': '#efffff' } })
       map.addLayer({ id: 'nexus-signal-halo', type: 'circle', source: 'nexus-signals', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'circle-radius': ['interpolate', ['linear'], ['get', 'severity'], 0, 7, 100, 17], 'circle-opacity': .14 } })
@@ -104,6 +121,13 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
     if (!ready || !map?.getSource('nexus-signals')) return
     ;(map.getSource('nexus-signals') as GeoJSONSource).setData(collection)
   }, [collection, ready])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    ;(map.getSource('nexus-areas') as GeoJSONSource | undefined)?.setData(areas)
+    ;(map.getSource('nexus-tracks') as GeoJSONSource | undefined)?.setData(tracks)
+  }, [areas, ready, tracks])
 
   useEffect(() => {
     if (!radarEnabled) return

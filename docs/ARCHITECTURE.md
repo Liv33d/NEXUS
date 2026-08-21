@@ -7,18 +7,22 @@ NEXUS is a static, local-first Progressive Web App. The core application require
 1. Provider adapters fetch and parse untrusted remote payloads.
 2. Zod validation rejects malformed coordinates, unsafe URLs, oversized collections, and invalid semantics.
 3. Valid records become normalized `Signal` objects with H3 cells and explicit provenance.
-4. IndexedDB persists recent Signals, provider state, Discoveries, settings, and bounded response caches.
+4. IndexedDB persists recent Signals, provider state, Discoveries, settings, Watches, and bounded daily H3 Memory aggregates.
 5. Deterministic engines derive relationships and Discoveries. They do not call generative AI.
 6. Globe, onboard atlas, list, timeline, and accessibility views consume only normalized data. Provider-native geometry never bypasses the sanitizer.
 
 ## Visualization layers
 
 - The globe uses bundled NASA Earth imagery so its foundational appearance remains available offline.
+- Country boundaries and a compact public-domain Natural Earth city catalog are bundled. Label density follows camera altitude and proximity, so cities emerge during regional zoom without sending a request or covering the planet in text.
 - Globe illumination is calculated per geographic surface coordinate from the current subsolar latitude/longitude. Camera rotation never influences day/night classification. Users may override live illumination with explicit full-day or full-night presentation modes.
 - The 2D investigation view uses a bundled Natural Earth SVG atlas with touch pan/pinch, zoom-aware signal thinning, and sanitized alert polygons, so geography remains available offline and on constrained iPhones.
 - Environmental raster overlays are independent of the Signal pipeline because they are visual context, not discrete claims. Each carries visible attribution and an honest freshness label. The globe uses a current NOAA radar export; connected Detail Map mode prefers RainViewer's latest globally composited frame and automatically falls back to NOAA. Neither path invents historical frames.
 - Current merged GOES-East/West GeoColor is requested directly from NOAA/NESDIS as a WGS84 export and placed on a separate, low-opacity additive globe sphere so dark source pixels cannot extinguish the illuminated Earth. It is an observation layer, not a global forecast.
 - Browsers without WebGL 2 receive a coordinate-precise, keyboard-accessible Signal list instead of a geographically misleading illustration.
+
+- Active NHC geometry and selected CelesTrak OMM elements are normalized during a scheduled GitHub Pages build. These small same-origin snapshots solve upstream CORS constraints and enforce provider-friendly polling without adding a proprietary runtime backend.
+- Observer's orbital propagation runs in a dedicated worker. GBIF LIFE context is bounded, permissive-license filtered, and fetched only for a selected place.
 
 Provider failure is isolated. The application continues with cached data and its deterministic Demo Mode.
 

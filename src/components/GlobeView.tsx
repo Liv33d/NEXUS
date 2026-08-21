@@ -3,7 +3,9 @@ import Globe, { type GlobeMethods } from 'react-globe.gl'
 import { AdditiveBlending, Mesh, MeshBasicMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, TextureLoader, Vector2 } from 'three'
 import { noaaGeoColorImage, noaaRadarImage } from '../lib/mapLayers'
 import { subsolarPoint } from '../lib/solar'
+import { GLOBE_CITIES, type GlobeCity } from '../data/cities'
 import type { Signal } from '../types/signal'
+import type { Feature, MultiPolygon, Polygon } from 'geojson'
 
 interface Props {
   signals: Signal[]
@@ -20,7 +22,8 @@ interface Props {
   qualityMode?: 'automatic' | 'quality' | 'battery'
 }
 
-interface EarthLabel { name: string; lat: number; lng: number; kind: 'land' | 'water' | 'place' }
+interface EarthLabel { name: string; lat: number; lng: number; kind: 'land' | 'water' | 'place'; population?: number; capital?: boolean }
+interface GlobeViewpoint { lat: number; lng: number; altitude: number }
 
 const WORLD_LABELS: EarthLabel[] = [
   { name: 'NORTH AMERICA', lat: 47, lng: -103, kind: 'land' }, { name: 'SOUTH AMERICA', lat: -18, lng: -59, kind: 'land' },
@@ -30,13 +33,26 @@ const WORLD_LABELS: EarthLabel[] = [
   { name: 'INDIAN OCEAN', lat: -22, lng: 80, kind: 'water' }, { name: 'ARCTIC OCEAN', lat: 74, lng: 20, kind: 'water' },
 ]
 
-const PLACE_LABELS: EarthLabel[] = [
-  ['New York', 40.71, -74.01], ['Los Angeles', 34.05, -118.24], ['Mexico City', 19.43, -99.13], ['São Paulo', -23.55, -46.63],
-  ['London', 51.51, -0.13], ['Paris', 48.86, 2.35], ['Lagos', 6.52, 3.38], ['Cairo', 30.04, 31.24],
-  ['Istanbul', 41.01, 28.98], ['Moscow', 55.76, 37.62], ['Dubai', 25.2, 55.27], ['Delhi', 28.61, 77.21],
-  ['Singapore', 1.35, 103.82], ['Beijing', 39.9, 116.41], ['Tokyo', 35.68, 139.69], ['Seoul', 37.57, 126.98],
-  ['Jakarta', -6.21, 106.85], ['Sydney', -33.87, 151.21], ['Auckland', -36.85, 174.76],
-].map(([name, lat, lng]) => ({ name: name as string, lat: lat as number, lng: lng as number, kind: 'place' as const }))
+function angularDistance(a: Pick<GlobeViewpoint, 'lat' | 'lng'>, b: Pick<GlobeCity, 'lat' | 'lng'>): number {
+  const radians = Math.PI / 180
+  const lat1 = a.lat * radians
+  const lat2 = b.lat * radians
+  const delta = (a.lng - b.lng) * radians
+  return Math.acos(Math.min(1, Math.max(-1, Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos(delta)))) / radians
+}
+
+function cityLabelsForView(view: GlobeViewpoint): EarthLabel[] {
+  if (view.altitude >= 1.35) return WORLD_LABELS
+  const mapZoom = Math.max(1.5, 3.25 - Math.log2(Math.max(view.altitude, 0.08)))
+  const radius = view.altitude < 0.28 ? 14 : view.altitude < 0.55 ? 28 : view.altitude < 0.9 ? 48 : 72
+  const limit = view.altitude < 0.3 ? 44 : view.altitude < 0.65 ? 30 : 20
+  return GLOBE_CITIES
+    .map((city) => ({ city, distance: angularDistance(view, city) }))
+    .filter(({ city, distance }) => distance <= radius && (city.minZoom <= mapZoom + 1.1 || city.capital || city.population >= 2_000_000))
+    .sort((a, b) => (b.city.capital ? 1 : 0) - (a.city.capital ? 1 : 0) || b.city.population - a.city.population || a.distance - b.distance)
+    .slice(0, limit)
+    .map(({ city }) => ({ ...city, kind: 'place' as const }))
+}
 
 const typeColor: Record<Signal['type'], string> = {
   earthquake: '#ffb35c', fire: '#ff755e', weather: '#74b7ff', aircraft: '#8ff5e8', satellite: '#b9a4ff',
@@ -85,22 +101,39 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
   const ref = useRef<GlobeMethods | undefined>(undefined)
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight })
   const [ready, setReady] = useState(false)
-  const [viewBand, setViewBand] = useState<'world' | 'near'>('world')
+  const [viewpoint, setViewpoint] = useState<GlobeViewpoint>({ lat: 18, lng: -45, altitude: 2.05 })
+  const [countries, setCountries] = useState<Array<Feature<Polygon | MultiPolygon>>>([])
   const [radarStatus, setRadarStatus] = useState<'loading' | 'live' | 'error'>('loading')
   const [satelliteStatus, setSatelliteStatus] = useState<'loading' | 'live' | 'error'>('loading')
   const earthMaterial = useMemo(createEarthMaterial, [])
-  const labels = viewBand === 'world' ? WORLD_LABELS : PLACE_LABELS
+  const labels = useMemo(() => cityLabelsForView(viewpoint), [viewpoint])
   const points = useMemo(() => signals.filter((signal) => signal.location).slice(0, batterySaver ? 350 : 1200), [signals, batterySaver])
   const rings = useMemo(() => {
     const notable = points.filter((signal) => (signal.severity ?? 0) >= 58).slice(0, batterySaver ? 8 : 24)
     return selected?.location && !notable.some((signal) => signal.id === selected.id) ? [selected, ...notable] : notable
   }, [batterySaver, points, selected])
+  const forecastPaths = useMemo(() => signals.flatMap((signal) => {
+    const value = signal.attributes.forecastTrack
+    if (!Array.isArray(value)) return []
+    const path = value.filter((item): item is [number, number] => Array.isArray(item) && item.length >= 2 && typeof item[0] === 'number' && typeof item[1] === 'number')
+    return path.length >= 2 ? [{ signal, points: path.map(([lng, lat]) => ({ lat, lng })) }] : []
+  }), [signals])
 
   useEffect(() => {
     const resize = () => setSize({ width: window.innerWidth, height: window.innerHeight })
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
   }, [])
+
+  useEffect(() => {
+    if (!labelsEnabled) return
+    const controller = new AbortController()
+    void fetch(`${import.meta.env.BASE_URL}natural-earth-110m-countries.geojson`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() as Promise<{ features?: Array<Feature<Polygon | MultiPolygon>> }> : Promise.reject(new Error('boundaries unavailable')))
+      .then((value) => setCountries(Array.isArray(value.features) ? value.features.slice(0, 260) : []))
+      .catch(() => { if (!controller.signal.aborted) setCountries([]) })
+    return () => controller.abort()
+  }, [labelsEnabled])
 
   useEffect(() => {
     if (!ready) return
@@ -205,18 +238,20 @@ export default function GlobeView({ signals, selected, onSelect, onReady, batter
       backgroundImageUrl={`${import.meta.env.BASE_URL}night-sky.png`} showAtmosphere={atmosphereEnabled} atmosphereColor="#9eefff" atmosphereAltitude={0.2}
       labelsData={labelsEnabled ? labels : []} labelLat={(item) => (item as EarthLabel).lat} labelLng={(item) => (item as EarthLabel).lng} labelText={(item) => (item as EarthLabel).name}
       labelColor={(item) => (item as EarthLabel).kind === 'water' ? 'rgba(145,211,230,.82)' : 'rgba(245,251,250,.92)'}
-      labelSize={(item) => (item as EarthLabel).kind === 'place' ? 0.22 : (item as EarthLabel).kind === 'water' ? 0.36 : 0.5}
-      labelAltitude={0.013} labelIncludeDot={(item) => (item as EarthLabel).kind === 'place'} labelDotRadius={0.07} labelResolution={3} labelsTransitionDuration={280}
+      labelSize={(item) => (item as EarthLabel).kind === 'place' ? Math.max(0.11, Math.min(0.23, 0.12 + Math.log10(Math.max((item as EarthLabel).population ?? 1, 1)) / 60)) : (item as EarthLabel).kind === 'water' ? 0.36 : 0.5}
+      labelAltitude={0.013} labelIncludeDot={(item) => (item as EarthLabel).kind === 'place'} labelDotRadius={(item) => (item as EarthLabel).capital ? 0.065 : 0.045} labelResolution={3} labelsTransitionDuration={180}
+      polygonsData={labelsEnabled ? countries : []} polygonGeoJsonGeometry={(item) => (item as Feature<Polygon | MultiPolygon>).geometry as never}
+      polygonCapColor={() => 'rgba(0,0,0,0)'} polygonSideColor={() => 'rgba(0,0,0,0)'} polygonStrokeColor={() => 'rgba(206,238,235,.22)'} polygonAltitude={0.0035} polygonsTransitionDuration={0}
       pointsData={points} pointLat={(item) => (item as Signal).location!.latitude} pointLng={(item) => (item as Signal).location!.longitude}
       pointAltitude={(item) => 0.008 + ((item as Signal).severity ?? 10) / 5000} pointRadius={(item) => 0.12 + ((item as Signal).severity ?? 10) / 190}
       pointColor={(item) => typeColor[(item as Signal).type]} pointLabel={() => ''} onPointClick={(item) => onSelect(item as Signal)}
       ringsData={rings} ringLat={(item) => (item as Signal).location!.latitude} ringLng={(item) => (item as Signal).location!.longitude}
       ringColor={(item: object) => (item as Signal).id === selected?.id ? '#dffffa' : typeColor[(item as Signal).type]}
       ringMaxRadius={(item) => 1.1 + ((item as Signal).severity ?? 0) / 24} ringPropagationSpeed={batterySaver ? 0 : 0.55} ringRepeatPeriod={batterySaver ? Infinity : 1700}
-      onZoom={({ altitude }) => {
-        const next = altitude < 1.15 ? 'near' : 'world'
-        setViewBand((current) => current === next ? current : next)
-      }}
+      pathsData={forecastPaths} pathPoints={(item) => (item as { points: Array<{ lat: number; lng: number }> }).points}
+      pathPointLat={(point) => (point as { lat: number }).lat} pathPointLng={(point) => (point as { lng: number }).lng}
+      pathColor={() => ['rgba(160,220,255,.95)', 'rgba(143,245,232,.42)']} pathStroke={1.2} pathDashLength={0.08} pathDashGap={0.045} pathDashAnimateTime={batterySaver ? 0 : 5200} pathPointAlt={() => 0.018}
+      onZoom={(view) => setViewpoint((current) => Math.abs(current.altitude - view.altitude) < 0.025 && Math.abs(current.lat - view.lat) < 1 && Math.abs(current.lng - view.lng) < 1 ? current : view)}
       onGlobeReady={() => {
         const globe = ref.current
         const renderer = globe?.renderer()

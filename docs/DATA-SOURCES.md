@@ -55,6 +55,32 @@
 - Marine context: wave height/direction/period, sea-surface temperature, and ocean-current velocity/direction from the nearest sea grid when that grid is within 150 km. These are labeled modeled and explicitly not suitable for navigation.
 - Commercial note: the public no-key endpoint is documented for non-commercial use. A commercial NEXUS release must self-host the AGPL server where compatible or use Open-Meteo's commercial customer endpoint.
 
+## NOAA National Hurricane Center
+
+- Endpoint: official active KML feed and the linked advisory track/cone KMZ products.
+- Authentication: none; North Atlantic, eastern Pacific, and central Pacific coverage.
+- Delivery: fetched once during the scheduled GitHub Pages build because NHC does not guarantee browser CORS. The deployed same-origin GeoJSON snapshot contains only active forecast tracks and uncertainty cones.
+- Semantics: forecast geometry is authoritative NHC output, but the cone is uncertainty—not a storm-size polygon or guaranteed path. NHC products must not be the sole input to life-safety decisions.
+
+## GBIF LIFE context
+
+- Endpoint: bounded `occurrence/search` query around an Observer point, capped at 120 recent records and cached in-session for six hours.
+- Authentication: none.
+- License policy: only CC0 and CC BY records with acceptable coordinate uncertainty enter the visible summary. CC BY-NC, unknown-license, and high-uncertainty records are excluded from the commercial-ready surface.
+- Semantics: the UI reports sampled occurrence records, never population or abundance. Each taxon links to an individual occurrence and GBIF citation guidance.
+
+## CelesTrak orbital elements
+
+- Endpoint: `GROUP=STATIONS&FORMAT=JSON`, using OMM-compatible JSON rather than legacy TLE-only parsing.
+- Authentication: none.
+- Rate governance: fetched by the scheduled static build no more than once per two-hour provider update, then served same-origin. The app never causes per-user CelesTrak requests.
+- Computation: selected public space-station passes are propagated locally in a Web Worker with SGP4. Results are labeled as potential overhead/dark-sky passes; visibility still depends on illumination, weather, obstructions, and element age.
+
+## Natural Earth populated places
+
+- Dataset: 1:10m populated places plus 1:110m country boundaries, public domain.
+- Use: a compact 3,116-place catalog (cities of 100,000+ plus national capitals) is bundled for offline, zoom-aware globe labels; MapLibre/OpenFreeMap remains the street-level detailed view.
+
 ## NOAA/NWS MRMS radar
 
 - Endpoint: official NOAA `radar_base_reflectivity` ArcGIS MapServer bounded image export.
