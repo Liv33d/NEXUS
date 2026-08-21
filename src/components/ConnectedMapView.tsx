@@ -3,7 +3,7 @@ import type { FeatureCollection, LineString, Point } from 'geojson'
 import { Map as MapLibreMap, setWorkerUrl, type GeoJSONSource } from 'maplibre-gl'
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { noaaGeoColorTileTemplate, noaaRadarTileTemplate } from '../lib/mapLayers'
+import { environmentalLayerStamp, noaaGeoColorTileTemplate, noaaRadarTileTemplate } from '../lib/mapLayers'
 import { signalAreasGeoJSON } from '../lib/geospatial'
 import type { Signal } from '../types/signal'
 import { altitudeToMapZoom, clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, mapZoomToAltitude, shouldReturnToGlobe, type GeographicView } from '../lib/geography'
@@ -67,10 +67,18 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
   const initialViewRef = useRef(initialView)
   const [ready, setReady] = useState(false)
   const [contextLost, setContextLost] = useState(false)
-  const [globalRadar, setGlobalRadar] = useState<{ tile: string; time: number }>()
+  const [layerReference, setLayerReference] = useState(Date.now)
   const collection = useMemo(() => signalCollection(signals), [signals])
   const areas = useMemo(() => signalAreasGeoJSON(signals), [signals])
   const tracks = useMemo(() => forecastTracks(signals), [signals])
+
+  useEffect(() => {
+    if (!radarEnabled && !satelliteEnabled) return
+    const refresh = () => { if (document.visibilityState === 'visible') setLayerReference(Date.now()) }
+    refresh()
+    const timer = window.setInterval(refresh, 5 * 60_000)
+    return () => window.clearInterval(timer)
+  }, [radarEnabled, satelliteEnabled])
 
   useEffect(() => { signalsRef.current = signals; onSelectRef.current = onSelect; onViewChangeRef.current = onViewChange; onRequestGlobeRef.current = onRequestGlobe }, [onRequestGlobe, onSelect, onViewChange, signals])
 
@@ -170,37 +178,19 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
   }, [areas, ready, tracks])
 
   useEffect(() => {
-    if (!radarEnabled) return
-    const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), 8_000)
-    void fetch('https://api.rainviewer.com/public/weather-maps.json', { signal: controller.signal })
-      .then((response) => { if (!response.ok) throw new Error('Global radar unavailable'); return response.json() as Promise<unknown> })
-      .then((value) => {
-        if (!value || typeof value !== 'object') throw new Error('Invalid global radar index')
-        const root = value as { host?: unknown; radar?: { past?: unknown } }
-        const frames = Array.isArray(root.radar?.past) ? root.radar.past : []
-        const latest = frames.at(-1) as { time?: unknown; path?: unknown } | undefined
-        if (typeof root.host !== 'string' || !root.host.startsWith('https://') || typeof latest?.path !== 'string' || !latest.path.startsWith('/v2/radar/') || typeof latest.time !== 'number') throw new Error('Invalid global radar frame')
-        setGlobalRadar({ tile: `${root.host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`, time: latest.time * 1000 })
-      })
-      .catch(() => setGlobalRadar(undefined))
-      .finally(() => window.clearTimeout(timeout))
-    return () => { window.clearTimeout(timeout); controller.abort() }
-  }, [radarEnabled])
-
-  useEffect(() => {
     const map = mapRef.current
     if (!ready || !map) return
     removeWeatherSource(map, 'nexus-radar')
     removeWeatherSource(map, 'nexus-satellite')
-    if (satelliteEnabled) addWeatherSource(map, 'nexus-satellite', [noaaGeoColorTileTemplate()], .4)
-    if (radarEnabled) addWeatherSource(map, 'nexus-radar', [globalRadar?.tile ?? noaaRadarTileTemplate()], .76, globalRadar ? 'Radar: RainViewer' : 'Radar: NOAA/NWS')
-  }, [globalRadar, radarEnabled, ready, satelliteEnabled])
+    if (satelliteEnabled) addWeatherSource(map, 'nexus-satellite', [noaaGeoColorTileTemplate(layerReference)], .4, 'Imagery: NOAA/NESDIS GeoColor')
+    if (radarEnabled) addWeatherSource(map, 'nexus-radar', [noaaRadarTileTemplate(layerReference)], .76, 'Radar: NOAA/NWS MRMS')
+  }, [layerReference, radarEnabled, ready, satelliteEnabled])
 
   useEffect(() => {
     if (!selected?.location || !ready) return
     mapRef.current?.flyTo({ center: [selected.location.longitude, selected.location.latitude], zoom: Math.max(mapRef.current.getZoom(), 5), duration: 1300, essential: true })
   }, [ready, selected])
 
-  return <div className="map-stage"><div ref={hostRef} className="maplibre-host" aria-label={`Detailed interactive map showing ${collection.features.length} signals`}/>{(!ready || contextLost) && <div className="map-loading"><span/><strong>{contextLost ? 'Restoring detailed map' : 'Acquiring detailed map'}</strong><small>{contextLost ? 'Graphics context was interrupted' : 'OpenFreeMap · no account or key'}</small></div>}<div className="connected-map-status"><span>{radarEnabled ? globalRadar ? 'GLOBAL RADAR · LIVE' : 'NOAA RADAR · LIVE' : satelliteEnabled ? 'SATELLITE · LATEST' : 'DETAILED MAP · LIVE'}</span><small>{radarEnabled && globalRadar ? `RainViewer · ${new Date(globalRadar.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'OpenStreetMap · OpenFreeMap'}</small></div></div>
+  const radarStamp = environmentalLayerStamp('radar', layerReference)
+  return <div className="map-stage"><div ref={hostRef} className="maplibre-host" aria-label={`Detailed interactive map showing ${collection.features.length} signals`}/>{(!ready || contextLost) && <div className="map-loading"><span/><strong>{contextLost ? 'Restoring detailed map' : 'Acquiring detailed map'}</strong><small>{contextLost ? 'Graphics context was interrupted' : 'OpenFreeMap · no account or key'}</small></div>}<div className="connected-map-status"><span>{radarEnabled ? 'NOAA MRMS RADAR · US DOMAINS' : satelliteEnabled ? 'NOAA GEOCOLOR · OBSERVED' : 'DETAILED MAP · LIVE'}</span><small>{radarEnabled ? `Retrieved ${new Date(radarStamp.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · service not time-enabled` : satelliteEnabled ? 'Latest GOES East/West · regional coverage' : 'OpenStreetMap · OpenFreeMap'}</small></div></div>
 }

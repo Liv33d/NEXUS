@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { fallbackMapStyle, nasaTrueColorTiles, noaaGeoColorImage, noaaGeoColorTileTemplate, noaaRadarImage, noaaRadarTileTemplate, previousUtcDate, radarFrames, worldGridGeoJSON } from './mapLayers'
+import { environmentalLayerStamp, fallbackMapStyle, nasaObservedCloudImage, nasaTrueColorTiles, noaaGeoColorImage, noaaGeoColorTileTemplate, noaaRadarImage, noaaRadarTileTemplate, previousUtcDate, radarFrames, worldGridGeoJSON } from './mapLayers'
 
 describe('environmental layer endpoints', () => {
   it('uses the previous completed UTC day for global imagery', () => {
     const instant = Date.parse('2026-08-16T00:20:00Z')
     expect(previousUtcDate(instant)).toBe('2026-08-15')
     expect(nasaTrueColorTiles(instant)).toContain('/2026-08-15/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg')
+    const clouds = new URL(nasaObservedCloudImage(instant))
+    expect(clouds.hostname).toBe('gibs.earthdata.nasa.gov')
+    expect(clouds.searchParams.get('time')).toBe('2026-08-15')
+    expect(clouds.searchParams.get('bbox')).toBe('-180,-90,180,90')
+  })
+
+  it('does not invent observation precision for a non-time-enabled radar service', () => {
+    const reference = Date.parse('2026-08-16T05:17:30Z')
+    expect(environmentalLayerStamp('radar', reference)).toEqual({ timestamp: Date.parse('2026-08-16T05:15:00Z'), kind: 'retrieved', ageMinutes: 2 })
+    expect(environmentalLayerStamp('satellite', reference).kind).toBe('observed')
   })
 
   it('uses a bounded, georeferenced NOAA export request', () => {

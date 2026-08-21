@@ -65,13 +65,13 @@ flowchart TD
 | NOAA/NHC | Live snapshot | Official active cyclone track and forecast uncertainty geometry, refreshed by the scheduled static build |
 | NOAA SWPC | Live | Global NOAA R/S/G space-weather scales |
 | NASA FIRMS | Optional live/delayed | User-supplied free MAP key stored only on-device |
-| Open‑Meteo | On demand | Globally ranked place search plus weather, selectable units, air quality, and location-local sunrise/sunset in Observer Mode |
+| Open‑Meteo | On demand | Globally ranked place search, current conditions, 24-hour and five-day model forecasts, coherent units, air quality, and local daylight in Observer |
 | GBIF | On demand | Bounded nearby LIFE observations; only permissively licensed records enter the summary |
 | GBIF Migration Watch | On demand | Coarse recent bird-observation density and derived 14-day centroid shifts; never presented as individual tracking |
 | Astronomy Engine | Local calculation | Current Sun, Moon, planet and Pluto positions using VSOP87/NOVAS-based ephemerides |
 | CelesTrak | 2-hour snapshot | Selected OMM orbital elements; next passes are propagated locally in a Web Worker |
-| RainViewer + NOAA/NWS MRMS | Live overlay | Latest global best-effort radar in Detail Map; official U.S. composite fallback and globe context |
-| NOAA/NESDIS GeoColor | Live overlay | Latest merged GOES-East/West observed cloud imagery |
+| NOAA/NWS MRMS | Current overlay | Official regional radar; retrieval freshness is shown because the service is not time-enabled |
+| NASA EOSDIS GIBS | Delayed observed overlay | Globally registered daily satellite context without GOES sector wedges |
 | NEXUS Demo Network | Built in | Deterministic, isolated replacement mode for exploration and testing |
 
 ## Privacy and credibility
@@ -89,8 +89,8 @@ NEXUS builds to static files in `dist/`. The included `Deploy NEXUS` workflow pu
 
 ## Limitations
 
-- Radar availability and coverage remain provider-dependent. RainViewer is a best-effort enhancement with no SLA; NOAA fallback coverage is regional, and neither source is presented as a forecast.
-- The current satellite layer covers the operational GOES-East/West domain rather than the poles and is labeled as observed imagery.
+- Radar availability and coverage remain provider-dependent. The no-key official NOAA layer is regional and not time-enabled; NEXUS shows retrieval age and does not fake global coverage or replay.
+- The current global cloud layer is a previous-completed-day satellite observation, not a live feed. Footprint-aware sub-daily geostationary imagery remains future work.
 - Planetary Memory is device-local and needs seven observed calendar days before it affects Pulse ranking; it intentionally does not pretend a new install has a historical baseline.
 - FIRMS requires the user to enter a free NASA MAP key locally; it is never committed or bundled.
 - Moving-track reconstruction and high-frequency geostationary satellite animation remain sequenced work; global replay currently replays stored evidence timestamps.

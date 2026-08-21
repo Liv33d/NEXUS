@@ -2,12 +2,24 @@ import { z } from 'zod'
 import { fetchWithTimeout, providerHttpError } from './types'
 
 const weatherSchema = z.object({
-  latitude: z.number(), longitude: z.number(), timezone: z.string(),
+  latitude: z.number(), longitude: z.number(), timezone: z.string(), utc_offset_seconds: z.number().default(0),
   current: z.object({
     time: z.string(), temperature_2m: z.number(), apparent_temperature: z.number(), precipitation: z.number(),
     weather_code: z.number(), cloud_cover: z.number(), surface_pressure: z.number(), wind_speed_10m: z.number(), wind_direction_10m: z.number(),
+    relative_humidity_2m: z.number().nullable().optional(), visibility: z.number().nullable().optional(), is_day: z.number().optional(),
   }),
-  daily: z.object({ sunrise: z.array(z.string()).min(1), sunset: z.array(z.string()).min(1) }),
+  hourly: z.object({
+    time: z.array(z.string()), temperature_2m: z.array(z.number().nullable()), apparent_temperature: z.array(z.number().nullable()),
+    precipitation_probability: z.array(z.number().nullable()), precipitation: z.array(z.number().nullable()),
+    rain: z.array(z.number().nullable()), snowfall: z.array(z.number().nullable()), weather_code: z.array(z.number().nullable()),
+    cloud_cover: z.array(z.number().nullable()), wind_speed_10m: z.array(z.number().nullable()), wind_direction_10m: z.array(z.number().nullable()),
+  }).optional(),
+  daily: z.object({
+    time: z.array(z.string()).optional(), sunrise: z.array(z.string()).min(1), sunset: z.array(z.string()).min(1),
+    weather_code: z.array(z.number().nullable()).optional(), temperature_2m_max: z.array(z.number().nullable()).optional(),
+    temperature_2m_min: z.array(z.number().nullable()).optional(), precipitation_probability_max: z.array(z.number().nullable()).optional(),
+    precipitation_sum: z.array(z.number().nullable()).optional(), wind_speed_10m_max: z.array(z.number().nullable()).optional(),
+  }),
 })
 
 const airSchema = z.object({ current: z.object({ time: z.string(), us_aqi: z.number().nullable(), pm2_5: z.number().nullable() }) })
@@ -127,12 +139,45 @@ export interface ObserverContext {
   pressure: number
   windSpeed: number
   windDirection: number
+  relativeHumidity?: number
+  visibility?: number
+  isDay?: boolean
   sunrise: string
   sunset: string
   timezone: string
   aqi?: number
   pm25?: number
   observedAt: number
+  retrievedAt: number
+  hourly24: HourlyForecastPoint[]
+  daily5: DailyForecastDay[]
+}
+
+export interface HourlyForecastPoint {
+  timestamp: number
+  localTime: string
+  temperature: number
+  apparentTemperature?: number
+  precipitationProbability?: number
+  precipitation?: number
+  rain?: number
+  snowfall?: number
+  weatherCode: number
+  cloudCover?: number
+  windSpeed?: number
+  windDirection?: number
+}
+
+export interface DailyForecastDay {
+  date: string
+  weatherCode: number
+  temperatureMax: number
+  temperatureMin: number
+  precipitationProbability?: number
+  precipitation?: number
+  windSpeedMax?: number
+  sunrise?: string
+  sunset?: string
 }
 
 export interface MarineContext {
@@ -148,7 +193,13 @@ export interface MarineContext {
 }
 
 export async function fetchObserverContext(latitude: number, longitude: number, signal?: AbortSignal): Promise<ObserverContext> {
-  const weatherParams = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude), current: 'temperature_2m,apparent_temperature,precipitation,weather_code,cloud_cover,surface_pressure,wind_speed_10m,wind_direction_10m', daily: 'sunrise,sunset', timezone: 'auto', forecast_days: '1' })
+  const weatherParams = new URLSearchParams({
+    latitude: String(latitude), longitude: String(longitude),
+    current: 'temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,cloud_cover,surface_pressure,wind_speed_10m,wind_direction_10m,visibility,is_day',
+    hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m',
+    daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,sunrise,sunset',
+    timezone: 'auto', forecast_days: '6',
+  })
   const airParams = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude), current: 'us_aqi,pm2_5', timezone: 'auto' })
   const [weatherResponse, airResponse] = await Promise.all([
     fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?${weatherParams}`, { signal }, 8000),
@@ -157,6 +208,37 @@ export async function fetchObserverContext(latitude: number, longitude: number, 
   if (!weatherResponse.ok) throw providerHttpError(weatherResponse, 'open-meteo')
   const weather = weatherSchema.parse(await weatherResponse.json())
   const air = airResponse.ok ? airSchema.safeParse(await airResponse.json()) : undefined
+  const parseLocalTime = (value: string) => Date.parse(`${value}Z`) - weather.utc_offset_seconds * 1000
+  const observedAt = parseLocalTime(weather.current.time)
+  const hourly24 = (weather.hourly?.time ?? []).map((localTime, index): HourlyForecastPoint | undefined => {
+    const temperature = weather.hourly?.temperature_2m[index]
+    const weatherCode = weather.hourly?.weather_code[index]
+    if (temperature == null || weatherCode == null) return undefined
+    return {
+      timestamp: parseLocalTime(localTime), localTime, temperature, weatherCode,
+      apparentTemperature: weather.hourly?.apparent_temperature[index] ?? undefined,
+      precipitationProbability: weather.hourly?.precipitation_probability[index] ?? undefined,
+      precipitation: weather.hourly?.precipitation[index] ?? undefined,
+      rain: weather.hourly?.rain[index] ?? undefined,
+      snowfall: weather.hourly?.snowfall[index] ?? undefined,
+      cloudCover: weather.hourly?.cloud_cover[index] ?? undefined,
+      windSpeed: weather.hourly?.wind_speed_10m[index] ?? undefined,
+      windDirection: weather.hourly?.wind_direction_10m[index] ?? undefined,
+    }
+  }).filter((point): point is HourlyForecastPoint => Boolean(point && point.timestamp >= observedAt - 30 * 60_000)).slice(0, 24)
+  const daily5 = (weather.daily.time ?? []).map((date, index): DailyForecastDay | undefined => {
+    const weatherCode = weather.daily.weather_code?.[index]
+    const temperatureMax = weather.daily.temperature_2m_max?.[index]
+    const temperatureMin = weather.daily.temperature_2m_min?.[index]
+    if (weatherCode == null || temperatureMax == null || temperatureMin == null) return undefined
+    return {
+      date, weatherCode, temperatureMax, temperatureMin,
+      precipitationProbability: weather.daily.precipitation_probability_max?.[index] ?? undefined,
+      precipitation: weather.daily.precipitation_sum?.[index] ?? undefined,
+      windSpeedMax: weather.daily.wind_speed_10m_max?.[index] ?? undefined,
+      sunrise: weather.daily.sunrise[index], sunset: weather.daily.sunset[index],
+    }
+  }).filter((day): day is DailyForecastDay => Boolean(day)).slice(0, 5)
   return {
     temperature: weather.current.temperature_2m,
     apparentTemperature: weather.current.apparent_temperature,
@@ -166,12 +248,18 @@ export async function fetchObserverContext(latitude: number, longitude: number, 
     pressure: weather.current.surface_pressure,
     windSpeed: weather.current.wind_speed_10m,
     windDirection: weather.current.wind_direction_10m,
+    relativeHumidity: weather.current.relative_humidity_2m ?? undefined,
+    visibility: weather.current.visibility ?? undefined,
+    isDay: weather.current.is_day === undefined ? undefined : weather.current.is_day === 1,
     sunrise: weather.daily.sunrise[0]!,
     sunset: weather.daily.sunset[0]!,
     timezone: weather.timezone,
     aqi: air?.success ? air.data.current.us_aqi ?? undefined : undefined,
     pm25: air?.success ? air.data.current.pm2_5 ?? undefined : undefined,
-    observedAt: Date.parse(weather.current.time),
+    observedAt,
+    retrievedAt: Date.now(),
+    hourly24,
+    daily5,
   }
 }
 
@@ -218,6 +306,18 @@ export function displayTemperature(celsius: number, unit: TemperatureUnit): numb
 
 export function displayWindSpeed(kmh: number, unit: TemperatureUnit): number {
   return unit === 'fahrenheit' ? kmh * 0.621371 : kmh
+}
+
+export function displayPrecipitation(mm: number, unit: TemperatureUnit): number {
+  return unit === 'fahrenheit' ? mm / 25.4 : mm
+}
+
+export function displayVisibility(meters: number, unit: TemperatureUnit): number {
+  return unit === 'fahrenheit' ? meters / 1609.344 : meters / 1000
+}
+
+export function displayPressure(hPa: number, unit: TemperatureUnit): number {
+  return unit === 'fahrenheit' ? hPa * 0.0295299830714 : hPa
 }
 
 export function formatObserverWallTime(value: string, locale?: string): string {
