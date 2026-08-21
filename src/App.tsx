@@ -103,6 +103,10 @@ export default function App() {
       setMigrationEnabled(false)
     } else if (lens === 'migration') {
       store.setLayers(['environment'])
+      // Migration is a deliberate visual focus. Atmospheric rasters otherwise
+      // occlude the derived corridors and hotspots on a phone-sized globe.
+      setRadarEnabled(false)
+      setSatelliteEnabled(false)
       setMigrationEnabled(true)
     } else if (lens === 'maritime') {
       store.setLayers(['weather', 'environment', 'infrastructure'])
@@ -221,8 +225,10 @@ export default function App() {
             </div>
             {migrationEnabled && <div className="active-domain-note"><Bird/><span><strong>Migration overlay active</strong><small>{migrationStatus === 'live' ? `${migration?.recentRecordCount ?? 0} licensed records · ${migration?.corridors.length ?? 0} derived shifts` : migrationStatus === 'cached' ? `${migration?.recentRecordCount ?? 0} cached records · offline-safe` : migrationStatus === 'error' ? 'GBIF unavailable · no stored sample' : 'Resolving licensed observations…'}</small></span></div>}
             <button className={`ambient-toggle ${ambientMode ? 'active' : ''}`} onClick={() => setAmbientMode((enabled) => !enabled)} aria-pressed={ambientMode}><MonitorUp/><span><strong>Ambient Earth</strong><small>Keeps the display awake and hides controls after 12 seconds</small></span><b>{ambientMode ? 'ON' : 'OFF'}</b></button>
-            <div className="lens-summary"><strong>{activeLayerCount}</strong><span>active signal layers</span></div>
-            <div className="lens-grid">{earthLayerOptions.map((layer) => { const count = store.signals.filter((signal) => signal.type === layer.type).length; return <button key={layer.type} className={store.layerVisibility[layer.type] ? 'active' : ''} onClick={() => { setActiveEarthLens('custom'); store.toggleLayer(layer.type) }} aria-pressed={store.layerVisibility[layer.type]}><i className={`type-dot ${layer.type}`}/><span><strong>{layer.label}</strong><small>{count} available</small></span><b>{store.layerVisibility[layer.type] ? 'ON' : 'OFF'}</b></button> })}</div>
+            <details className="advanced-layers">
+              <summary><span>Signal categories</span><b>{activeLayerCount} active</b></summary>
+              <div className="lens-grid">{earthLayerOptions.map((layer) => { const count = store.signals.filter((signal) => signal.type === layer.type).length; return <button key={layer.type} className={store.layerVisibility[layer.type] ? 'active' : ''} onClick={() => { setActiveEarthLens('custom'); store.toggleLayer(layer.type) }} aria-pressed={store.layerVisibility[layer.type]}><i className={`type-dot ${layer.type}`}/><span><strong>{layer.label}</strong><small>{count} available</small></span><b>{store.layerVisibility[layer.type] ? 'ON' : 'OFF'}</b></button> })}</div>
+            </details>
             <p className="control-note">Environmental imagery is visual context, not a forecast. Signal lenses never delete locally cached evidence.</p>
           </>}
           {activePanel === 'time' && <><div className="time-panel"><TimeControl value={store.timeWindow} onChange={(window) => { setReplayCutoff(undefined); store.setTimeWindow(window) }}/></div><ReplayControl signals={windowSignals} cutoff={replayCutoff} onCutoff={setReplayCutoff}/><p className="control-note">Replay reveals observations by their authoritative timestamps. It does not interpolate movement or imply causation.</p></>}
