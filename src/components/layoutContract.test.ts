@@ -16,7 +16,7 @@ describe('mobile interaction layout contract', () => {
     for (const label of ['Solar System', 'Bird Migration', 'Maritime', 'Flight Activity', 'Animals & Life', 'Orbit']) {
       expect(app).toContain(label)
     }
-    expect(app).toContain('Maritime does not imply live vessel tracking')
+    expect(app).toContain('Ocean hazards · no live vessel tracking')
     expect(app).toContain('No live aircraft provider connected')
     expect(styles).toContain('.domain-lens-grid')
   })

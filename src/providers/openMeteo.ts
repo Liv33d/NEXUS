@@ -298,6 +298,19 @@ export function weatherCodeLabel(code: number): string {
   return 'Thunderstorms'
 }
 
+export function observerWeatherSummary(context: ObserverContext): string {
+  const nextRain = context.hourly24.find((point) => (point.precipitationProbability ?? 0) >= 60)
+  const rainPeak = Math.max(0, ...context.hourly24.map((point) => point.precipitationProbability ?? 0))
+  const windPeak = Math.max(context.windSpeed, ...context.hourly24.map((point) => point.windSpeed ?? 0))
+  const parts = [`${weatherCodeLabel(context.weatherCode)} now`]
+  if (nextRain) parts.push(`rain becomes likely around ${new Date(nextRain.timestamp).toLocaleTimeString([], { hour: 'numeric' })}, peaking near ${Math.round(rainPeak)}%`)
+  else if (rainPeak >= 30) parts.push('a smaller chance of rain develops later')
+  else parts.push('rain is unlikely during the next 24 hours')
+  if (windPeak >= 50) parts.push(`winds may become strong, reaching about ${Math.round(windPeak)} km/h`)
+  if (context.aqi !== undefined && context.aqi >= 101) parts.push('air quality may be unhealthy for sensitive groups')
+  return `${parts.join('. ')}.`
+}
+
 export type TemperatureUnit = 'celsius' | 'fahrenheit'
 
 export function displayTemperature(celsius: number, unit: TemperatureUnit): number {

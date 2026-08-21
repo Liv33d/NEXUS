@@ -86,6 +86,8 @@ export default function SettingsPage(props: Props) {
       <p className="setting-note">Automatic balances sharpness and battery life. Battery mode reduces globe resolution, animation, and environmental overlays.</p>
     </section>
 
+    <details className="settings-advanced">
+      <summary><span><Database/>Advanced & data sources</span><small>Layer defaults, provider health, demo data, and credentials</small></summary>
     <section className="settings-group">
       <h2>Signal layers</h2>
       {visibleLayers.map((layer) => <button key={layer.type} onClick={() => props.onToggle(layer.type)}><span><i className={`type-dot ${layer.type}`}/>{layer.label}{props.demoMode && extendedLayers.some((item) => item.type === layer.type) && <small className="demo-layer-label">DEMO</small>}</span><b className={props.layers[layer.type] ? 'toggle on' : 'toggle'} aria-label={props.layers[layer.type] ? 'On' : 'Off'}/></button>)}
@@ -107,6 +109,7 @@ export default function SettingsPage(props: Props) {
       <h2>Optional provider access</h2>
       <div className="credential-panel"><KeyRound/><span><strong>NASA FIRMS map key</strong><small>{props.firmsConfigured ? 'Configured on this device. Enter another key to replace it.' : 'Stored only in IndexedDB on this device; never uploaded to NEXUS.'}</small></span><a className="credential-help" href="https://firms.modaps.eosdis.nasa.gov/api/area/" target="_blank" rel="noreferrer">Get a free NASA MAP key <ExternalLink/></a><input type="password" autoComplete="off" value={firmsKey} onChange={(event) => setFirmsKey(event.target.value)} placeholder={props.firmsConfigured ? '••••••••••••••••' : 'Paste MAP key'} aria-label="NASA FIRMS map key"/><button disabled={!firmsKey.trim()} onClick={() => { void props.onFirmsKey(firmsKey); setFirmsKey('') }}>{props.firmsConfigured ? 'Replace key' : 'Save key locally'}</button>{props.firmsConfigured && <button className="danger-link" onClick={() => void props.onFirmsKey('')}>Remove saved key</button>}</div>
     </section>
+    </details>
 
     <section className="settings-group storage-control">
       <h2>Privacy and storage</h2>

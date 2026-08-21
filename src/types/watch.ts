@@ -48,6 +48,7 @@ export interface WatchTrigger {
   lastSeenAt: number
   state: 'new' | 'seen' | 'expired'
   delivery: 'in-app'
+  reason?: string
 }
 
 export interface WatchDeliveryAdapter {

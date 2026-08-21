@@ -7,6 +7,8 @@ import { environmentalLayerStamp, noaaGeoColorTileTemplate, noaaRadarTileTemplat
 import { signalAreasGeoJSON } from '../lib/geospatial'
 import type { Signal } from '../types/signal'
 import { altitudeToMapZoom, clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, mapZoomToAltitude, shouldReturnToGlobe, type GeographicView } from '../lib/geography'
+import type { MigrationSnapshot } from '../lib/migration'
+import type { LifeGlobeSnapshot } from '../lib/lifeGlobe'
 
 setWorkerUrl(mapWorkerUrl)
 
@@ -21,6 +23,8 @@ interface Props {
   initialView?: GeographicView
   onViewChange?(view: GeographicView): void
   onRequestGlobe?(): void
+  migration?: MigrationSnapshot
+  life?: LifeGlobeSnapshot
 }
 
 type SignalProperties = { id: string; title: string; type: Signal['type']; severity: number }
@@ -46,6 +50,20 @@ function forecastTracks(signals: Signal[]): FeatureCollection<LineString, { id: 
   }) }
 }
 
+function migrationTracks(snapshot?: MigrationSnapshot): FeatureCollection<LineString, { id: string; name: string; confidence: number }> {
+  return { type: 'FeatureCollection', features: (snapshot?.corridors ?? []).slice(0, 80).map((corridor) => ({
+    type: 'Feature', properties: { id: corridor.id, name: corridor.commonName ?? corridor.species, confidence: corridor.confidence },
+    geometry: { type: 'LineString', coordinates: [[corridor.startLongitude, corridor.startLatitude], [corridor.endLongitude, corridor.endLatitude]] },
+  })) }
+}
+
+function lifeDensity(migration?: MigrationSnapshot, life?: LifeGlobeSnapshot): FeatureCollection<Point, { observations: number; domain: 'migration' | 'life' }> {
+  return { type: 'FeatureCollection', features: [
+    ...(migration?.cells ?? []).map((cell) => ({ type: 'Feature' as const, properties: { observations: cell.observations, domain: 'migration' as const }, geometry: { type: 'Point' as const, coordinates: [cell.longitude, cell.latitude] } })),
+    ...(life?.cells ?? []).map((cell) => ({ type: 'Feature' as const, properties: { observations: cell.observations, domain: 'life' as const }, geometry: { type: 'Point' as const, coordinates: [cell.longitude, cell.latitude] } })),
+  ].slice(0, 500) }
+}
+
 function addWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satellite', tiles: string[], opacity: number, attribution?: string) {
   if (map.getSource(id)) return
   map.addSource(id, { type: 'raster', tiles, tileSize: 256, attribution: attribution ?? (id === 'nexus-radar' ? 'Weather: NOAA/NWS' : 'Satellite: NOAA/NESDIS') })
@@ -57,7 +75,7 @@ function removeWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satell
   if (map.getSource(id)) map.removeSource(id)
 }
 
-export default function ConnectedMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestGlobe }: Props) {
+export default function ConnectedMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestGlobe, migration, life }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const signalsRef = useRef(signals)
@@ -71,6 +89,8 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
   const collection = useMemo(() => signalCollection(signals), [signals])
   const areas = useMemo(() => signalAreasGeoJSON(signals), [signals])
   const tracks = useMemo(() => forecastTracks(signals), [signals])
+  const migrationLines = useMemo(() => migrationTracks(migration), [migration])
+  const ecologicalDensity = useMemo(() => lifeDensity(migration, life), [life, migration])
 
   useEffect(() => {
     if (!radarEnabled && !satelliteEnabled) return
@@ -104,6 +124,10 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
       map.addLayer({ id: 'nexus-area-outline', type: 'line', source: 'nexus-areas', paint: { 'line-color': '#9ad2ff', 'line-width': 1.4, 'line-opacity': .82 } })
       map.addSource('nexus-tracks', { type: 'geojson', data: forecastTracks(signalsRef.current) })
       map.addLayer({ id: 'nexus-track-lines', type: 'line', source: 'nexus-tracks', paint: { 'line-color': '#d7f0ff', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': .9 } })
+      map.addSource('nexus-life-density', { type: 'geojson', data: lifeDensity() })
+      map.addLayer({ id: 'nexus-life-density', type: 'circle', source: 'nexus-life-density', paint: { 'circle-color': ['match', ['get', 'domain'], 'migration', '#a4ffcc', '#7edfd4'], 'circle-radius': ['interpolate', ['linear'], ['get', 'observations'], 1, 5, 30, 18], 'circle-opacity': .18, 'circle-blur': .45 } })
+      map.addSource('nexus-migration', { type: 'geojson', data: migrationTracks() })
+      map.addLayer({ id: 'nexus-migration', type: 'line', source: 'nexus-migration', paint: { 'line-color': '#a4ffcc', 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 1.1, 8, 2.6], 'line-opacity': .62, 'line-dasharray': [2, 2] } })
       map.addLayer({ id: 'nexus-clusters', type: 'circle', source: 'nexus-signals', filter: ['has', 'point_count'], paint: { 'circle-color': ['step', ['get', 'point_count'], '#315f5d', 25, '#367d77', 100, '#d08d55'], 'circle-radius': ['step', ['get', 'point_count'], 15, 25, 20, 100, 27], 'circle-stroke-width': 1.5, 'circle-stroke-color': '#bffff6', 'circle-opacity': .88 } })
       map.addLayer({ id: 'nexus-cluster-count', type: 'symbol', source: 'nexus-signals', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 10 }, paint: { 'text-color': '#efffff' } })
       map.addLayer({ id: 'nexus-signal-halo', type: 'circle', source: 'nexus-signals', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'circle-radius': ['interpolate', ['linear'], ['get', 'severity'], 0, 7, 100, 17], 'circle-opacity': .14 } })
@@ -176,6 +200,13 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
     ;(map.getSource('nexus-areas') as GeoJSONSource | undefined)?.setData(areas)
     ;(map.getSource('nexus-tracks') as GeoJSONSource | undefined)?.setData(tracks)
   }, [areas, ready, tracks])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!ready || !map) return
+    ;(map.getSource('nexus-life-density') as GeoJSONSource | undefined)?.setData(ecologicalDensity)
+    ;(map.getSource('nexus-migration') as GeoJSONSource | undefined)?.setData(migrationLines)
+  }, [ecologicalDensity, migrationLines, ready])
 
   useEffect(() => {
     const map = mapRef.current

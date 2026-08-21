@@ -3,6 +3,7 @@ import type { Discovery, MemoryBucket, Relationship, Signal } from '../types/sig
 import { clamp, severityLabel } from './signal'
 import { distanceKm, weightedCenter } from './geo'
 import { deviationWeight, discoveryMemory } from './memory'
+import { discoveryPlainLanguage } from './context'
 
 const MAX_DISTANCE_KM = 300
 const MAX_TIME_MS = 6 * 60 * 60 * 1000
@@ -143,7 +144,7 @@ export function buildDiscoveries(signals: Signal[], now = Date.now(), memoryBuck
       id: `discovery-${[...ids].sort().join('-')}`,
       createdAt: Math.min(...members.map((signal) => signal.timestamp)),
       title: discoveryName(members),
-      description: `${members.length} observable signal${members.length === 1 ? '' : 's'} across ${sourceDiversity} source${sourceDiversity === 1 ? '' : 's'}. Correlation indicates proximity, not causation.`,
+      description: `${discoveryPlainLanguage(members.length, sourceDiversity, memory.status === 'established' ? memory.deviationPercent : undefined)} Nearby signals may be related, but proximity alone does not establish a cause.`,
       score,
       scoreComponents,
       memory,

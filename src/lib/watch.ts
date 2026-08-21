@@ -3,6 +3,7 @@ import type { ObserverContext } from '../providers/openMeteo'
 import type { Signal } from '../types/signal'
 import type { WatchMatch, WatchRule, WatchTrigger, WatchWeatherMatch } from '../types/watch'
 import { distanceKm } from './geo'
+import { buildSignalContext } from './context'
 
 export function placeWatchId(latitude: number, longitude: number): string {
   return `place-${latitude.toFixed(4)}-${longitude.toFixed(4)}`
@@ -26,16 +27,16 @@ export function evaluateWeatherWatch(rule: WatchRule, context: ObserverContext |
   const weather = rule.conditions.weather
   if (!rule.enabled || !weather) return { ruleId: rule.id, evaluatedAt: now, active: false, reasons: [] }
   const reasons: string[] = []
-  if (weather.severeAlerts && signals.some((signal) => signal.type === 'weather' && signal.location && (signal.severity ?? 0) >= rule.conditions.minimumSeverity && distanceKm(rule.target, signal.location) <= rule.conditions.radiusKm)) reasons.push('Severe weather alert nearby')
+  if (weather.severeAlerts && signals.some((signal) => signal.type === 'weather' && signal.location && (signal.severity ?? 0) >= rule.conditions.minimumSeverity && distanceKm(rule.target, signal.location) <= rule.conditions.radiusKm)) reasons.push('An official severe weather alert affects the watched area')
   if (context) {
     const precipitationPeak = Math.max(0, ...context.hourly24.map((point) => point.precipitationProbability ?? 0))
     const windPeak = Math.max(context.windSpeed, ...context.hourly24.map((point) => point.windSpeed ?? 0))
     const temperaturePeak = Math.max(context.temperature, ...context.hourly24.map((point) => point.temperature))
     const temperatureLow = Math.min(context.temperature, ...context.hourly24.map((point) => point.temperature))
-    if (weather.precipitationProbabilityAtLeast !== undefined && precipitationPeak >= weather.precipitationProbabilityAtLeast) reasons.push(`${Math.round(precipitationPeak)}% precipitation forecast`)
-    if (weather.windSpeedAtLeastKmh !== undefined && windPeak >= weather.windSpeedAtLeastKmh) reasons.push(`${Math.round(windPeak)} km/h wind forecast`)
-    if (weather.temperatureAboveC !== undefined && temperaturePeak >= weather.temperatureAboveC) reasons.push(`${Math.round(temperaturePeak)}°C heat threshold`)
-    if (weather.temperatureBelowC !== undefined && temperatureLow <= weather.temperatureBelowC) reasons.push(`${Math.round(temperatureLow)}°C cold threshold`)
+    if (weather.precipitationProbabilityAtLeast !== undefined && precipitationPeak >= weather.precipitationProbabilityAtLeast) reasons.push(`Rain becomes likely, reaching ${Math.round(precipitationPeak)}% during the next 24 hours`)
+    if (weather.windSpeedAtLeastKmh !== undefined && windPeak >= weather.windSpeedAtLeastKmh) reasons.push(`Winds may reach about ${Math.round(windPeak)} km/h during the next 24 hours`)
+    if (weather.temperatureAboveC !== undefined && temperaturePeak >= weather.temperatureAboveC) reasons.push(`Temperatures may rise to about ${Math.round(temperaturePeak)}°C`)
+    if (weather.temperatureBelowC !== undefined && temperatureLow <= weather.temperatureBelowC) reasons.push(`Temperatures may fall to about ${Math.round(temperatureLow)}°C`)
   }
   return { ruleId: rule.id, evaluatedAt: now, active: reasons.length > 0, reasons }
 }
@@ -52,7 +53,9 @@ export function evaluateWatchTriggers(rule: WatchRule, signals: Signal[], previo
     if (existing && now - existing.triggeredAt < dedupeWindow) return [{ ...existing, lastSeenAt: now }]
     if (!canCreate) return []
     canCreate = false
-    return [{ id: `${rule.id}:${signalId}:${Math.floor(now / dedupeWindow)}`, ruleId: rule.id, signalId, triggeredAt: now, lastSeenAt: now, state: 'new' as const, delivery: rule.delivery }]
+    const signal = signals.find((candidate) => candidate.id === signalId)
+    const context = signal ? buildSignalContext(signal) : undefined
+    return [{ id: `${rule.id}:${signalId}:${Math.floor(now / dedupeWindow)}`, ruleId: rule.id, signalId, triggeredAt: now, lastSeenAt: now, state: 'new' as const, delivery: rule.delivery, reason: context ? `${context.headline}. ${context.whyItMatters ?? context.plainLanguageSummary}` : 'A watched condition crossed its configured threshold.' }]
   })
 }
 

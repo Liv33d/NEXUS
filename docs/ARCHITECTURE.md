@@ -13,11 +13,15 @@ NEXUS is a static, local-first Progressive Web App. The core application require
 
 ## Visualization layers
 
+- Earth is a compositing environment rather than a mutually exclusive mode switch. `NexusLayerDefinition` records category, render order, semantic zoom, cost, provenance, and renderer strategy. Presets add compatible layers; they never silently erase the user's enabled state.
+- The globe and detailed map use renderer-specific representations of the same active systems. LIFE becomes coarse density, migration becomes derived corridors, and high-volume Signals remain clustered or bounded. Focus changes emphasis and opacity rather than disabling unrelated layers.
+- “Show Everything” enables every supported conceptual system while the renderers preserve mobile budgets through caps, clustering, coarse H3 cells, and semantic detail.
+
 - The globe uses bundled NASA Earth imagery so its foundational appearance remains available offline.
 - Country boundaries and a compact public-domain Natural Earth city catalog are bundled. Label density follows camera altitude and proximity, so cities emerge during regional zoom without sending a request or covering the planet in text.
 - Globe illumination is calculated per geographic surface coordinate from the current subsolar latitude/longitude. Camera rotation never influences day/night classification. Users may override live illumination with explicit full-day or full-night presentation modes.
 - The 2D investigation view uses a bundled Natural Earth SVG atlas with touch pan/pinch, zoom-aware signal thinning, and sanitized alert polygons, so geography remains available offline and on constrained iPhones.
-- Environmental raster overlays are independent of the Signal pipeline because they are visual context, not discrete claims. Each carries visible attribution and an honest freshness label. The globe uses a current NOAA radar export; connected Detail Map mode prefers RainViewer's latest globally composited frame and automatically falls back to NOAA. Neither path invents historical frames.
+- Environmental raster overlays are independent of the Signal pipeline because they are visual context, not discrete claims. Each retains attribution and honest freshness details in the layer inspector. The globe and connected Detail Map use official NOAA products; neither path invents historical frames or global coverage.
 - Current merged GOES-East/West GeoColor is requested directly from NOAA/NESDIS as a WGS84 export and placed on a separate, low-opacity additive globe sphere so dark source pixels cannot extinguish the illuminated Earth. It is an observation layer, not a global forecast.
 - Browsers without WebGL 2 receive a coordinate-precise, keyboard-accessible Signal list instead of a geographically misleading illustration.
 
@@ -35,6 +39,10 @@ NEXUS is a static, local-first Progressive Web App. The core application require
 - Solar System is a lazy-loaded renderer isolated from the long-lived Earth renderer. It is entered by continuing to zoom outward from the main globe and begins focused on Earth's calculated heliocentric position; zooming back into Earth returns to the geographic renderer. Astronomy Engine calculates heliocentric J2000 positions locally; distances and body radii are visually scaled and disclosed in-product.
 
 Provider failure is isolated. The application continues with cached data and its deterministic Demo Mode.
+
+## Context engine
+
+`Signal` remains the evidence record. The deterministic Context Engine converts normalized fields into a progressive explanation: what happened, why it matters, what may happen next, affected area, confidence, awareness, and technical facts. Initial templates cover earthquakes, official weather/cyclone messages, FIRMS thermal observations, and FEMA declarations. Source wording and official instructions are preserved; missing facts are not inferred. The default inspector is human-facing, while provenance and methodology remain under “Show the science.”
 
 ## Watch pipeline
 

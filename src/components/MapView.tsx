@@ -7,6 +7,8 @@ import { environmentalLayerStamp, noaaRadarImage } from '../lib/mapLayers'
 import type { Signal } from '../types/signal'
 import ConnectedMapView from './ConnectedMapView'
 import type { GeographicView } from '../lib/geography'
+import type { MigrationSnapshot } from '../lib/migration'
+import type { LifeGlobeSnapshot } from '../lib/lifeGlobe'
 
 interface Props {
   signals: Signal[]
@@ -18,6 +20,8 @@ interface Props {
   initialView?: GeographicView
   onViewChange?(view: GeographicView): void
   onRequestGlobe?(): void
+  migration?: MigrationSnapshot
+  life?: LifeGlobeSnapshot
 }
 
 type WorldFeature = Feature<Polygon | MultiPolygon>
@@ -31,7 +35,7 @@ const colors: Record<Signal['type'], string> = {
   'space-weather': '#d6a4ff', media: '#f2da87', environment: '#74d9a1', infrastructure: '#c7d0d0',
 }
 
-function AtlasMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false }: Props) {
+function AtlasMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false, migration, life }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const gesture = useRef<{ distance?: number; camera: Camera }>({ camera: initialCamera })
@@ -122,6 +126,8 @@ function AtlasMapView({ signals, selected, onSelect, radarEnabled = false, satel
         <g className="atlas-grid">{[-120,-60,0,60,120].map((longitude) => { const [x] = atlasProject(longitude, 0); return <line key={`lng-${longitude}`} x1={x} x2={x} y1="0" y2={HEIGHT}/> })}{[-60,-30,0,30,60].map((latitude) => { const [,y] = atlasProject(0, latitude); return <line key={`lat-${latitude}`} x1="0" x2={WIDTH} y1={y} y2={y}/> })}</g>
         <g className="atlas-land">{world.map((feature, index) => <path key={`${typeof feature.properties?.name === 'string' ? feature.properties.name : 'land'}-${index}`} d={atlasGeometryPath(feature.geometry)}/>)}</g>
         {radarEnabled && <image className="atlas-radar" href={radarUrl} x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="none" onLoad={() => setRadarStatus('live')} onError={() => setRadarStatus('error')}/>} 
+        <g className="atlas-life-density">{[...(migration?.cells ?? []), ...(life?.cells ?? [])].slice(0, 180).map((cell) => { const [cx, cy] = atlasProject(cell.longitude, cell.latitude); return <circle key={`life-${cell.id}`} cx={cx} cy={cy} r={(2.4 + Math.log2(cell.observations + 1)) / Math.sqrt(camera.scale)}><title>{cell.observations} recent biodiversity observations</title></circle> })}</g>
+        <g className="atlas-migration">{(migration?.corridors ?? []).slice(0, 40).map((corridor) => { const [x1, y1] = atlasProject(corridor.startLongitude, corridor.startLatitude); const [x2, y2] = atlasProject(corridor.endLongitude, corridor.endLatitude); return <line key={corridor.id} x1={x1} y1={y1} x2={x2} y2={y2}><title>{corridor.commonName ?? corridor.species}: observations shifted {corridor.direction}</title></line> })}</g>
         <g className="atlas-areas">{areas.map(({ signal, path }) => <path key={signal.id} d={path} fill={colors[signal.type]} stroke={colors[signal.type]} onClick={(event) => { event.stopPropagation(); onSelect(signal) }}><title>{signal.title}</title></path>)}</g>
         <g className="atlas-signals">{points.map((signal) => { const [cx, cy] = atlasProject(signal.location!.longitude, signal.location!.latitude); const isSelected = signal.id === selected?.id; const radius = (isSelected ? 7 : 2.8 + (signal.severity ?? 20) / 42) / Math.sqrt(camera.scale); return <g key={signal.id} className={isSelected ? 'selected' : ''} onClick={(event) => { event.stopPropagation(); onSelect(signal) }}><circle className="signal-halo" cx={cx} cy={cy} r={radius * 2.5} fill={colors[signal.type]}/><circle className="signal-core" cx={cx} cy={cy} r={radius} fill={colors[signal.type]} stroke="#efffff" strokeWidth={.7 / camera.scale}><title>{signal.title}</title></circle>{isSelected && <text x={cx + radius * 1.5} y={cy - radius * 1.5} fontSize={10 / camera.scale}>{signal.title}</text>}</g> })}</g>
       </g>

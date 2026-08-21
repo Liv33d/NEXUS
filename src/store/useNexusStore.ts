@@ -41,6 +41,7 @@ interface NexusState {
   setGlobeReady(ready: boolean): void
   toggleLayer(type: SignalType): void
   setLayers(types: SignalType[]): void
+  enableLayers(types: SignalType[]): void
   setDemoMode(enabled: boolean): Promise<void>
   setFirmsKey(key: string): Promise<void>
   initialize(): Promise<void>
@@ -112,6 +113,12 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   setLayers: (types) => set((state) => {
     const enabled = new Set(types)
     const layerVisibility = Object.fromEntries(Object.keys(state.layerVisibility).map((type) => [type, enabled.has(type as SignalType)])) as Record<SignalType, boolean>
+    void db.settings.put({ key: 'layers', value: layerVisibility }).catch(() => undefined)
+    return { layerVisibility }
+  }),
+  enableLayers: (types) => set((state) => {
+    const layerVisibility = { ...state.layerVisibility }
+    for (const type of types) layerVisibility[type] = true
     void db.settings.put({ key: 'layers', value: layerVisibility }).catch(() => undefined)
     return { layerVisibility }
   }),

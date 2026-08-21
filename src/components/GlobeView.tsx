@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
 import { Mesh, MeshBasicMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, TextureLoader, Vector2 } from 'three'
-import { environmentalLayerStamp, nasaObservedCloudImage, noaaRadarImage } from '../lib/mapLayers'
+import { nasaObservedCloudImage, noaaRadarImage } from '../lib/mapLayers'
 import { subsolarPoint } from '../lib/solar'
 import { GLOBE_CITIES, type GlobeCity } from '../data/cities'
 import type { Signal } from '../types/signal'
@@ -30,6 +30,7 @@ interface Props {
   migrationFocus?: MigrationSnapshot['corridors'][number]
   life?: LifeGlobeSnapshot
   lifeFocus?: LifeGlobeTaxon
+  layerFocus?: 'world' | 'weather' | 'migration' | 'maritime' | 'aviation' | 'animals' | 'orbit' | 'custom'
 }
 
 interface EarthLabel { name: string; lat: number; lng: number; kind: 'land' | 'water' | 'place'; population?: number; capital?: boolean }
@@ -108,7 +109,7 @@ function createEarthMaterial() {
   })
 }
 
-function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestSolar, migration, migrationFocus, life, lifeFocus }: Props) {
+function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestSolar, migration, migrationFocus, life, lifeFocus, layerFocus = 'world' }: Props) {
   const ref = useRef<GlobeMethods | undefined>(undefined)
   const hostRef = useRef<HTMLDivElement>(null)
   const onReadyRef = useRef(onReady)
@@ -157,7 +158,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       .map((cell) => ({ id: `life-${cell.id}`, lat: cell.latitude, lng: cell.longitude, color: '#7edfd4', maxRadius: Math.min(4.2, 1.6 + Math.log2(cell.observations + 1)), repeatPeriod: 2700 }))
     return [...signalRings, ...migrationRings, ...lifeRings]
   }, [batterySaver, life, migration, points, selected])
-  const ecologicalCells = migration?.cells ?? life?.cells ?? []
+  const ecologicalCells = [...(migration?.cells ?? []), ...(life?.cells ?? [])]
   const forecastPaths = useMemo(() => signals.flatMap((signal) => {
     const value = signal.attributes.forecastTrack
     if (!Array.isArray(value)) return []
@@ -332,7 +333,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       // Keep raster shells well clear of Earth, borders and one another. The
       // former 1.003–1.006 radii were effectively coplanar on mobile GPUs and
       // produced the flicker seen on iPhone when the camera moved.
-      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.022, 96, 64), new MeshBasicMaterial({ map: loaded, transparent: true, opacity: 0.7, depthWrite: false }))
+      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.022, 96, 64), new MeshBasicMaterial({ map: loaded, transparent: true, opacity: layerFocus === 'migration' || layerFocus === 'animals' ? 0.42 : 0.7, depthWrite: false }))
       mesh.renderOrder = 4
       globe.scene().add(mesh)
       setRadarStatus('live')
@@ -342,7 +343,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       if (mesh) { globe.scene().remove(mesh); mesh.geometry.dispose(); (mesh.material as MeshBasicMaterial).dispose() }
       texture.dispose()
     }
-  }, [batterySaver, radarEnabled, ready])
+  }, [batterySaver, layerFocus, radarEnabled, ready])
 
   useEffect(() => {
     if (!ready || !satelliteEnabled || batterySaver) return
@@ -359,7 +360,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       // only bright, nearly neutral pixels. This prevents the imagery from
       // painting a second, misaligned Earth over the actual globe.
       const material = new ShaderMaterial({
-        uniforms: { cloudTexture: { value: loaded }, opacity: { value: 0.34 } },
+        uniforms: { cloudTexture: { value: loaded }, opacity: { value: layerFocus === 'migration' || layerFocus === 'animals' ? 0.2 : 0.34 } },
         vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
         fragmentShader: `uniform sampler2D cloudTexture;uniform float opacity;varying vec2 vUv;void main(){vec3 c=texture2D(cloudTexture,vUv).rgb;float hi=max(c.r,max(c.g,c.b));float lo=min(c.r,min(c.g,c.b));float lum=dot(c,vec3(.2126,.7152,.0722));float chroma=hi-lo;float neutral=1.0-smoothstep(.055,.17,chroma);float cloud=smoothstep(.46,.82,lum)*pow(neutral,1.7);if(cloud<.055)discard;vec3 cloudColor=mix(vec3(.78,.88,.92),vec3(.98,1.0,1.0),smoothstep(.55,.92,lum));gl_FragColor=vec4(cloudColor,cloud*opacity);}`,
         transparent: true,
@@ -375,7 +376,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       if (mesh) { globe.scene().remove(mesh); mesh.geometry.dispose(); (mesh.material as ShaderMaterial).dispose() }
       texture.dispose()
     }
-  }, [batterySaver, layerReference, ready, satelliteEnabled])
+  }, [batterySaver, layerFocus, layerReference, ready, satelliteEnabled])
 
   return <div ref={hostRef} className="globe-stage" role="img" aria-label={`Interactive Earth showing ${points.length} visible signals`}>
     <Globe
@@ -389,7 +390,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       polygonCapColor={() => 'rgba(0,0,0,0)'} polygonSideColor={() => 'rgba(0,0,0,0)'} polygonStrokeColor={() => 'rgba(206,238,235,.22)'} polygonAltitude={0.0025} polygonsTransitionDuration={0}
       pointsData={points} pointLat={(item) => (item as Signal).location!.latitude} pointLng={(item) => (item as Signal).location!.longitude}
       pointAltitude={(item) => 0.008 + ((item as Signal).severity ?? 10) / 5000} pointRadius={(item) => 0.12 + ((item as Signal).severity ?? 10) / 190}
-      pointColor={(item) => typeColor[(item as Signal).type]} pointLabel={() => ''} onPointClick={(item) => onSelect(item as Signal)}
+      pointColor={(item) => `${typeColor[(item as Signal).type]}${layerFocus === 'migration' || layerFocus === 'animals' ? '66' : 'ff'}`} pointLabel={() => ''} onPointClick={(item) => onSelect(item as Signal)}
       ringsData={rings} ringLat={(item) => (item as GlobeRing).lat} ringLng={(item) => (item as GlobeRing).lng}
       ringColor={(item: object) => (item as GlobeRing).color} ringMaxRadius={(item) => (item as GlobeRing).maxRadius}
       ringPropagationSpeed={batterySaver ? 0 : 0.55} ringRepeatPeriod={(item: object) => batterySaver ? Infinity : (item as GlobeRing).repeatPeriod}
@@ -409,7 +410,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       hexBinPointLng={(item) => (item as { longitude: number }).longitude}
       hexBinPointWeight={(item) => Math.min(8, (item as { observations: number }).observations)}
       hexBinResolution={3} hexMargin={0.13} hexAltitude={(bin) => Math.min(0.085, 0.012 + Number((bin as { sumWeight?: number }).sumWeight ?? 1) / 170)}
-      hexTopColor={() => migration ? 'rgba(164,255,204,.9)' : 'rgba(126,223,212,.86)'} hexSideColor={() => migration ? 'rgba(54,142,102,.34)' : 'rgba(38,126,121,.3)'} hexTransitionDuration={300}
+      hexTopColor={() => migration && life ? 'rgba(145,241,207,.88)' : migration ? 'rgba(164,255,204,.9)' : 'rgba(126,223,212,.86)'} hexSideColor={() => migration ? 'rgba(54,142,102,.34)' : 'rgba(38,126,121,.3)'} hexTransitionDuration={300}
       onGlobeReady={() => {
         const globe = ref.current
         const renderer = globe?.renderer()
@@ -422,10 +423,8 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       }}
     />
     <div className="environment-status-stack">
-      {satelliteEnabled && <div className={`radar-provenance satellite ${satelliteStatus}`}><i/><span>{batterySaver ? 'CLOUDS PAUSED' : satelliteStatus === 'live' ? `NASA VIIRS CLOUDS · OBSERVED ${environmentalLayerStamp('satellite', layerReference).ageMinutes < 60 ? `${environmentalLayerStamp('satellite', layerReference).ageMinutes}M AGO` : `${Math.floor(environmentalLayerStamp('satellite', layerReference).ageMinutes / 60)}H AGO`}` : satelliteStatus === 'error' ? 'CLOUD IMAGERY UNAVAILABLE' : 'ACQUIRING OBSERVED CLOUDS'}</span></div>}
-      {radarEnabled && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED' : radarStatus === 'live' ? `NOAA MRMS · RETRIEVED ${environmentalLayerStamp('radar', layerReference).ageMinutes}M AGO · US` : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
-      {migration && <div className={`radar-provenance migration ${migration.freshness}`}><i/><span>GBIF BIRDS · {migration.freshness === 'cached' ? 'CACHED' : 'DERIVED 14D SHIFT'}</span></div>}
-      {life && <div className={`radar-provenance life ${life.freshness}`}><i/><span>GBIF LIFE · {life.freshness === 'cached' ? 'CACHED' : 'OBSERVED SAMPLE'}</span></div>}
+      {satelliteEnabled && satelliteStatus !== 'live' && <div className={`radar-provenance satellite ${satelliteStatus}`}><i/><span>{batterySaver ? 'CLOUDS PAUSED' : satelliteStatus === 'error' ? 'CLOUD IMAGERY UNAVAILABLE' : 'ACQUIRING OBSERVED CLOUDS'}</span></div>}
+      {radarEnabled && radarStatus !== 'live' && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
     </div>
     {viewpoint.altitude > 2.35 && <div className={`space-transition-cue ${solarArmed ? 'armed' : ''}`}>{solarArmed ? 'PINCH OUT ONCE MORE · LEAVE EARTH' : 'CONTINUE OUTWARD · ORBIT'}</div>}
     {contextLost && <div className="map-loading renderer-recovery"><span/><strong>Restoring Earth</strong><small>Graphics context was interrupted</small></div>}

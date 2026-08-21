@@ -1,8 +1,9 @@
 import { cellToLatLng, latLngToCell } from 'h3-js'
 import { z } from 'zod'
 import { fetchWithTimeout, providerHttpError } from '../providers/types'
+import { fetchGbifTaxonPresentation, type TaxonMedia } from './gbifPresentation'
 
-const CACHE_KEY = 'nexus:life-globe:v1'
+const CACHE_KEY = 'nexus:life-globe:v2'
 const CACHE_TTL = 12 * 60 * 60 * 1000
 const PAGE_SIZE = 300
 const TAXA = [
@@ -24,6 +25,7 @@ type LifeRecord = z.infer<typeof responseSchema>['results'][number]
 export interface LifeGlobeCell { id: string; latitude: number; longitude: number; observations: number }
 export interface LifeGlobeTaxon {
   id: string
+  taxonKey: number
   scientificName: string
   commonName?: string
   kingdom?: string
@@ -32,6 +34,7 @@ export interface LifeGlobeTaxon {
   latitude: number
   longitude: number
   sourceUrl: string
+  media?: TaxonMedia
 }
 export interface LifeGlobeSnapshot {
   cells: LifeGlobeCell[]
@@ -81,6 +84,7 @@ export function buildLifeGlobeSnapshot(input: LifeRecord[], now = Date.now()): L
     const location = centroid(values)
     return {
       id: `gbif-life-${speciesKey}`,
+      taxonKey: speciesKey,
       scientificName: values[0]!.species ?? values[0]!.scientificName!,
       commonName: values.find((record) => record.vernacularName)?.vernacularName,
       kingdom: values[0]!.kingdom,
@@ -95,6 +99,11 @@ export function buildLifeGlobeSnapshot(input: LifeRecord[], now = Date.now()): L
     cells, taxa, recordCount: records.length, retrievedAt: now, freshness: 'live',
     methodology: 'A bounded global sample of recent CC0 and CC BY animal and plant occurrences, aggregated to coarse H3 cells. Records show where observations were published; they do not measure abundance or expose precise wildlife locations.',
   }
+}
+
+async function enrichTaxon(taxon: LifeGlobeTaxon, signal?: AbortSignal): Promise<LifeGlobeTaxon> {
+  const presentation = await fetchGbifTaxonPresentation(taxon.taxonKey, taxon.sourceUrl, signal)
+  return { ...taxon, commonName: presentation.commonName ?? taxon.commonName, media: presentation.media }
 }
 
 async function fetchTaxon(taxonKey: string, signal?: AbortSignal): Promise<LifeRecord[]> {
@@ -113,7 +122,9 @@ export async function fetchLifeGlobeSnapshot(signal?: AbortSignal, force = false
   if (!force && cached && Date.now() - cached.retrievedAt < CACHE_TTL) return { ...cached, freshness: 'cached' }
   try {
     const records = (await Promise.all(TAXA.map((taxon) => fetchTaxon(taxon.key, signal)))).flat()
-    const snapshot = buildLifeGlobeSnapshot(records)
+    const base = buildLifeGlobeSnapshot(records)
+    const enriched = await Promise.all(base.taxa.slice(0, 8).map((taxon) => enrichTaxon(taxon, signal).catch(() => taxon)))
+    const snapshot = { ...base, taxa: [...enriched, ...base.taxa.slice(8)] }
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(snapshot)) } catch { /* optional storage */ }
     return snapshot
   } catch (error) {

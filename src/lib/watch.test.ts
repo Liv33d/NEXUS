@@ -40,6 +40,6 @@ describe('local watch engine', () => {
       windSpeed: 20, windDirection: 80, sunrise: '2026-08-21T06:00', sunset: '2026-08-21T18:50', timezone: 'America/Puerto_Rico',
       observedAt: 1, retrievedAt: 2, daily5: [], hourly24: [{ timestamp: 3, localTime: '2026-08-21T15:00', temperature: 30, weatherCode: 80, precipitationProbability: 82, windSpeed: 22 }],
     }
-    expect(evaluateWeatherWatch(watch, context, [], 400).reasons).toContain('82% precipitation forecast')
+    expect(evaluateWeatherWatch(watch, context, [], 400).reasons).toContain('Rain becomes likely, reaching 82% during the next 24 hours')
   })
 })
