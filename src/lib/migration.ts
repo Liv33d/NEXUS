@@ -1,9 +1,10 @@
 import { cellToLatLng, latLngToCell } from 'h3-js'
 import { z } from 'zod'
 import { fetchWithTimeout, providerHttpError } from '../providers/types'
+import { fetchGbifTaxonPresentation, type TaxonMedia } from './gbifPresentation'
 
 const AVES_TAXON_KEY = '212'
-const CACHE_KEY = 'nexus:migration:v2'
+const CACHE_KEY = 'nexus:migration:v3'
 const CACHE_TTL = 6 * 60 * 60 * 1000
 const MAX_RECORDS_PER_WINDOW = 300
 const WINDOW_PAGES = 2
@@ -32,6 +33,7 @@ export interface MigrationActivityCell {
 
 export interface MigrationCorridor {
   id: string
+  taxonKey: number
   species: string
   commonName?: string
   startLatitude: number
@@ -43,10 +45,12 @@ export interface MigrationCorridor {
   distanceKm: number
   direction: string
   confidence: number
+  media?: TaxonMedia
 }
 
 export interface MigrationSpeciesSummary {
   id: string
+  taxonKey: number
   species: string
   commonName?: string
   recentObservations: number
@@ -157,6 +161,7 @@ export function buildMigrationSnapshot(recentInput: BirdRecord[], priorInput: Bi
     const location = centroid(current)
     return {
       id: `gbif-bird-${speciesKey}`,
+      taxonKey: speciesKey,
       species: current[0]!.species ?? current[0]!.scientificName!,
       commonName: current.find((record) => record.vernacularName)?.vernacularName,
       recentObservations: current.length,
@@ -175,6 +180,7 @@ export function buildMigrationSnapshot(recentInput: BirdRecord[], priorInput: Bi
     if (distance < 120 || distance > 5_000) continue
     corridors.push({
       id: `gbif-shift-${speciesKey}`,
+      taxonKey: speciesKey,
       species: current[0]!.species ?? current[0]!.scientificName!,
       commonName: current.find((record) => record.vernacularName)?.vernacularName,
       startLatitude: start.latitude,
@@ -254,7 +260,12 @@ export async function fetchMigrationSnapshot(signal?: AbortSignal, force = false
     if (cached) return { ...cached, freshness: 'cached' }
     throw error
   }
-  const snapshot = buildMigrationSnapshot(recent, prior, now)
+  const base = buildMigrationSnapshot(recent, prior, now)
+  const enriched = await Promise.all(base.corridors.slice(0, 8).map(async (corridor) => {
+    const presentation = await fetchGbifTaxonPresentation(corridor.taxonKey, `https://www.gbif.org/species/${corridor.taxonKey}`, signal)
+    return { ...corridor, commonName: presentation.commonName ?? corridor.commonName, media: presentation.media }
+  }))
+  const snapshot = { ...base, corridors: [...enriched, ...base.corridors.slice(8)] }
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(snapshot)) } catch { /* storage is optional */ }
   return snapshot
 }

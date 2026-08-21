@@ -47,6 +47,15 @@
 - Captured: coordinates, acquisition time, satellite, instrument, confidence, brightness, fire radiative power, scan/track, and day/night flag.
 - Semantics: every item is described as a thermal detection; NEXUS does not automatically claim that every hotspot is an uncontrolled wildfire.
 
+## OpenFEMA Disaster Declarations
+
+- Endpoint: official OpenFEMA `DisasterDeclarationsSummaries` v2 API.
+- Authentication: none.
+- Coverage: U.S. states and territories; declarations are delayed government actions rather than live hazard warnings.
+- Fusion: rows for the same disaster and state are combined into one Signal with designated areas and declared assistance programs. NEXUS does not duplicate one declaration for every county row.
+- Geography: the dataset has designated-area names but no event geometry. The map symbol is therefore placed at the state or territory center with 500 km accuracy and explicit approximate-placement provenance; the official area names remain authoritative.
+- Commercial use: U.S. federal public data. Source attribution and the canonical FEMA disaster page are retained.
+
 ## Open‑Meteo
 
 - Use: on-demand Observer current conditions, 24-hour hourly forecast, five-day outlook, air quality, geocoding, and nearby marine context—not ordinary-weather map noise.
@@ -69,6 +78,8 @@
 - Authentication: none.
 - License policy: only CC0 and CC BY records with acceptable coordinate uncertainty enter the visible summary. CC BY-NC, unknown-license, and high-uncertainty records are excluded from the commercial-ready surface.
 - Semantics: the UI reports sampled occurrence records, never population or abundance. Each taxon links to an individual occurrence and GBIF citation guidance.
+- Names: the GBIF vernacular-name endpoint is queried for the most visible taxa. The app prefers the current locale, then English, then another published common name, and never invents one.
+- Media: GBIF species media is eligible only when its own license is CC0/public domain or CC BY. Creator, license, source URL, and taxon association remain attached to the image; NC and ND media is rejected.
 
 ## GBIF Migration Watch
 
@@ -117,7 +128,7 @@
 
 - Endpoint: hosted Liberty vector style and OpenMapTiles/OSM tiles.
 - Authentication: none; no registration or API key.
-- Use: connected high-detail map only, with clustered Signal layers and projected environmental imagery.
+- Use: connected high-detail map with clustered Signals, projected environmental imagery, LIFE density, and derived migration corridors.
 - Resilience: a bundled Natural Earth atlas remains available as an explicit offline/failure mode.
 
 ## NASA EOSDIS GIBS imagery
