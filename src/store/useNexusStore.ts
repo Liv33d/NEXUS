@@ -7,8 +7,9 @@ import { runProvider } from '../providers/runtime'
 import { ProviderError } from '../providers/types'
 import type { ObserverPlace } from '../providers/openMeteo'
 import { createPlaceWatch, placeWatchId } from '../lib/watch'
+import { aggregateMemory } from '../lib/memory'
 import type { WatchRule } from '../types/watch'
-import type { Discovery, ProviderStatus, Signal, SignalType } from '../types/signal'
+import type { Discovery, MemoryBucket, ProviderStatus, Signal, SignalType } from '../types/signal'
 
 export type ViewId = 'earth' | 'discover' | 'cases' | 'observer' | 'settings'
 export type TimeWindow = 'NOW' | '1H' | '6H' | '24H' | '7D'
@@ -63,7 +64,9 @@ function cachedCopy(signal: Signal): Signal {
 }
 
 async function deriveWithSaved(signals: Signal[]): Promise<Discovery[]> {
-  const derived = buildDiscoveries(signals)
+  let memory: MemoryBucket[] = []
+  try { memory = await db.memory.toArray() } catch { /* Baselines remain in learning mode. */ }
+  const derived = buildDiscoveries(signals, Date.now(), memory)
   let saved: Discovery[] = []
   try { saved = await db.discoveries.where('status').equals('saved').toArray() } catch { return derived }
   const savedById = new Map(saved.map((item) => [item.id, item]))
@@ -191,6 +194,11 @@ export const useNexusStore = create<NexusState>((set, get) => ({
       .filter((signal) => signal.timestamp >= context.since || (signal.endTime ?? 0) >= context.since)
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 5000)
+    try {
+      const retained = await db.signals.where('timestamp').above(now - 30 * 86400000).toArray()
+      const buckets = aggregateMemory(retained, Date.now())
+      if (buckets.length) await db.memory.bulkPut(buckets)
+    } catch { /* Planetary Memory degrades to this-session learning when IndexedDB is unavailable. */ }
     set({ signals: deduped, discoveries: await deriveWithSaved(deduped), isRefreshing: false, lastRefreshed: Date.now() })
   },
   saveDiscovery: async (id) => {

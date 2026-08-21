@@ -11,7 +11,7 @@ export default defineConfig({
     VitePWA({
       disable: singleFilePreview,
       registerType: 'autoUpdate',
-      includeAssets: ['nexus-mark.svg', 'nexus-apple-touch.png', 'nexus-icon-192.png', 'nexus-icon-512.png', 'earth-blue-marble.jpg', 'earth-city-lights.jpg', 'earth-topology.png', 'night-sky.png'],
+      includeAssets: ['nexus-mark.svg', 'nexus-apple-touch.png', 'nexus-icon-192.png', 'nexus-icon-512.png', 'earth-blue-marble.jpg', 'earth-city-lights.jpg', 'earth-topology.png', 'night-sky.png', 'data/*.json'],
       manifest: {
         name: 'NEXUS — See the world connect',
         short_name: 'NEXUS',
@@ -58,6 +58,15 @@ export default defineConfig({
             options: {
               cacheName: 'nexus-observer-context',
               expiration: { maxEntries: 20, maxAgeSeconds: 3600 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/api\.gbif\.org\/v1\/occurrence\/search/,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'nexus-life-context',
+              expiration: { maxEntries: 12, maxAgeSeconds: 21600 },
               cacheableResponse: { statuses: [0, 200] }
             }
           },

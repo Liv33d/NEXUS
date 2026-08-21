@@ -4,7 +4,7 @@
 
 NEXUS is a mobile-first, privacy-friendly global signal discovery system. It transforms legitimate public data into a traceable model of what is happening on Earth—without paid APIs, accounts, trackers, a proprietary backend, or runtime AI.
 
-The current release is a working multi-source vertical slice. It includes a NASA-textured interactive globe with astronomical live illumination and explicit day/night overrides, a geographically accurate MapLibre investigation map, best-effort global RainViewer radar with official NOAA fallback, near-real-time NOAA GeoColor cloud imagery, live USGS earthquakes, NWS severe-weather alerts with preserved polygons, NASA EONET natural events, GDACS global impact alerts, NOAA space weather, optional NASA FIRMS thermal detections, Open‑Meteo Observer context, normalized Signals, H3 indexing, local persistence, temporal filtering and replay, contextual Lens presets, bounded conservative correlation, anomaly scoring, Discoveries, durable Cases with notes and evidence export, offline PWA support, provider health, source provenance, and a safe recovery screen.
+The current release is a working multi-source vertical slice. It includes a NASA-textured interactive globe with astronomical illumination, zoom-aware offline city labels and borders, a detailed MapLibre investigation map, weather imagery, official active-cyclone geometry, live natural-hazard feeds, bounded GBIF LIFE context, locally propagated space-station passes, Open‑Meteo place context, normalized Signals, H3 Planetary Memory, explainable Pulse deviations, durable Cases and Watches, offline PWA support, provenance, and safe recovery.
 
 ## Quick start
 
@@ -60,9 +60,12 @@ flowchart TD
 | NWS Alerts | Live | Official U.S. watches, warnings, and advisories with polygons |
 | NASA EONET | Live/delayed | Keyless global natural events from authoritative source aggregation |
 | GDACS | Live/delayed | Keyless global cyclone, flood, volcano, drought, and wildfire impact alerts |
+| NOAA/NHC | Live snapshot | Official active cyclone track and forecast uncertainty geometry, refreshed by the scheduled static build |
 | NOAA SWPC | Live | Global NOAA R/S/G space-weather scales |
 | NASA FIRMS | Optional live/delayed | User-supplied free MAP key stored only on-device |
 | Open‑Meteo | On demand | Globally ranked place search plus weather, selectable units, air quality, and location-local sunrise/sunset in Observer Mode |
+| GBIF | On demand | Bounded nearby LIFE observations; only permissively licensed records enter the summary |
+| CelesTrak | 2-hour snapshot | Selected OMM orbital elements; next passes are propagated locally in a Web Worker |
 | RainViewer + NOAA/NWS MRMS | Live overlay | Latest global best-effort radar in Detail Map; official U.S. composite fallback and globe context |
 | NOAA/NESDIS GeoColor | Live overlay | Latest merged GOES-East/West observed cloud imagery |
 | NEXUS Demo Network | Built in | Deterministic, isolated replacement mode for exploration and testing |
@@ -78,13 +81,13 @@ flowchart TD
 
 ## Deployment
 
-NEXUS builds to static files in `dist/`. The included `Deploy NEXUS` workflow publishes `main` through GitHub Pages when Pages is configured to use GitHub Actions. The relative Vite base also supports Cloudflare Pages, Netlify, and Vercel without platform coupling.
+NEXUS builds to static files in `dist/`. The included `Deploy NEXUS` workflow publishes `main` through GitHub Pages and refreshes the small NHC/CelesTrak snapshots every two hours without a runtime backend. The relative Vite base also supports Cloudflare Pages, Netlify, and Vercel without platform coupling.
 
 ## Limitations
 
 - Radar availability and coverage remain provider-dependent. RainViewer is a best-effort enhancement with no SLA; NOAA fallback coverage is regional, and neither source is presented as a forecast.
 - The current satellite layer covers the operational GOES-East/West domain rather than the poles and is labeled as observed imagery.
-- Baselines are currently recent-device baselines; longer statistical history will improve anomaly context.
+- Planetary Memory is device-local and needs seven observed calendar days before it affects Pulse ranking; it intentionally does not pretend a new install has a historical baseline.
 - FIRMS requires the user to enter a free NASA MAP key locally; it is never committed or bundled.
 - Moving-track reconstruction and high-frequency geostationary satellite animation remain sequenced work; global replay currently replays stored evidence timestamps.
 
