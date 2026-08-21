@@ -22,4 +22,8 @@ describe('GBIF common-name localization', () => {
   it('falls back to English rather than inventing a localized name', () => {
     expect(selectVernacularName(names, 'is-IS')).toBe('American Redstart')
   })
+
+  it('rejects checklist abbreviations that are not human names', () => {
+    expect(selectVernacularName([{ vernacularName: 'BASW', language: 'eng' }, { vernacularName: 'Barn Swallow', language: 'eng' }], 'en-US')).toBe('Barn Swallow')
+  })
 })
