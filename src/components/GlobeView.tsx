@@ -7,6 +7,7 @@ import { GLOBE_CITIES, type GlobeCity } from '../data/cities'
 import type { Signal } from '../types/signal'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import { clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, geographicViewsDiffer, type GeographicView } from '../lib/geography'
+import type { MigrationSnapshot } from '../lib/migration'
 
 interface Props {
   signals: Signal[]
@@ -23,6 +24,7 @@ interface Props {
   qualityMode?: 'automatic' | 'quality' | 'battery'
   initialView?: GeographicView
   onViewChange?(view: GeographicView): void
+  migration?: MigrationSnapshot
 }
 
 interface EarthLabel { name: string; lat: number; lng: number; kind: 'land' | 'water' | 'place'; population?: number; capital?: boolean }
@@ -100,7 +102,7 @@ function createEarthMaterial() {
   })
 }
 
-function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange }: Props) {
+function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, migration }: Props) {
   const ref = useRef<GlobeMethods | undefined>(undefined)
   const hostRef = useRef<HTMLDivElement>(null)
   const onReadyRef = useRef(onReady)
@@ -321,6 +323,20 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       pathsData={forecastPaths} pathPoints={(item) => (item as { points: Array<{ lat: number; lng: number }> }).points}
       pathPointLat={(point) => (point as { lat: number }).lat} pathPointLng={(point) => (point as { lng: number }).lng}
       pathColor={() => ['rgba(160,220,255,.95)', 'rgba(143,245,232,.42)']} pathStroke={1.2} pathDashLength={0.08} pathDashGap={0.045} pathDashAnimateTime={batterySaver ? 0 : 5200} pathPointAlt={() => 0.018}
+      arcsData={migration?.corridors ?? []}
+      arcStartLat={(item) => (item as MigrationSnapshot['corridors'][number]).startLatitude}
+      arcStartLng={(item) => (item as MigrationSnapshot['corridors'][number]).startLongitude}
+      arcEndLat={(item) => (item as MigrationSnapshot['corridors'][number]).endLatitude}
+      arcEndLng={(item) => (item as MigrationSnapshot['corridors'][number]).endLongitude}
+      arcColor={() => ['rgba(164,255,204,.18)', 'rgba(164,255,204,.92)']}
+      arcAltitudeAutoScale={0.28} arcStroke={0.42} arcDashLength={0.24} arcDashGap={0.16}
+      arcDashAnimateTime={batterySaver ? 0 : 4200}
+      hexBinPointsData={migration?.cells ?? []}
+      hexBinPointLat={(item) => (item as MigrationSnapshot['cells'][number]).latitude}
+      hexBinPointLng={(item) => (item as MigrationSnapshot['cells'][number]).longitude}
+      hexBinPointWeight={(item) => Math.min(8, (item as MigrationSnapshot['cells'][number]).observations)}
+      hexBinResolution={3} hexMargin={0.22} hexAltitude={(bin) => Math.min(0.06, 0.006 + Number((bin as { sumWeight?: number }).sumWeight ?? 1) / 220)}
+      hexTopColor={() => 'rgba(151,255,197,.66)'} hexSideColor={() => 'rgba(54,142,102,.18)'} hexTransitionDuration={400}
       onGlobeReady={() => {
         const globe = ref.current
         const renderer = globe?.renderer()
@@ -335,6 +351,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
     <div className="environment-status-stack">
       {satelliteEnabled && <div className={`radar-provenance satellite ${satelliteStatus}`}><i/><span>{batterySaver ? 'SATELLITE PAUSED' : satelliteStatus === 'live' ? 'NOAA GEOCOLOR · LATEST' : satelliteStatus === 'error' ? 'SATELLITE UNAVAILABLE' : 'ACQUIRING SATELLITE'}</span></div>}
       {radarEnabled && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED' : radarStatus === 'live' ? 'NOAA RADAR · 5 MIN' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
+      {migration && <div className={`radar-provenance migration ${migration.freshness}`}><i/><span>GBIF BIRDS · {migration.freshness === 'cached' ? 'CACHED' : 'DERIVED 14D SHIFT'}</span></div>}
     </div>
     {contextLost && <div className="map-loading renderer-recovery"><span/><strong>Restoring Earth</strong><small>Graphics context was interrupted</small></div>}
     <div className="globe-vignette" />

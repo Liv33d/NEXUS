@@ -69,6 +69,21 @@
 - License policy: only CC0 and CC BY records with acceptable coordinate uncertainty enter the visible summary. CC BY-NC, unknown-license, and high-uncertainty records are excluded from the commercial-ready surface.
 - Semantics: the UI reports sampled occurrence records, never population or abundance. Each taxon links to an individual occurrence and GBIF citation guidance.
 
+## GBIF Migration Watch
+
+- Endpoint: keyless GBIF Occurrence Search for Aves (`taxonKey=212`).
+- Refresh/cache: opt-in only; two bounded 300-record windows, cached locally for six hours.
+- License gate: only CC0 and CC BY records are processed. CC BY-NC and unknown licenses are excluded so the architecture remains commercially viable.
+- Privacy: observations are aggregated to coarse H3 resolution 3 cells. Exact wildlife coordinates are not rendered.
+- Semantics: animated corridors are changes in per-species observation centroids across two 14-day samples. They are `DERIVED`, not individual tracks, abundance estimates, or migration forecasts. Sampling effort can dominate the pattern.
+
+## Astronomy Engine
+
+- Runtime: local browser calculation; no API key and no network request.
+- Method: VSOP87/NOVAS-based heliocentric J2000 ephemerides for Mercury through Neptune, Pluto, Earth, and the Moon.
+- License: MIT.
+- Semantics: orbital angles and positions are calculated for the displayed UTC instant. Logarithmic distance and enlarged body radii are used strictly for mobile legibility and are disclosed in the interface.
+
 ## CelesTrak orbital elements
 
 - Endpoint: `GROUP=STATIONS&FORMAT=JSON`, using OMM-compatible JSON rather than legacy TLE-only parsing.
