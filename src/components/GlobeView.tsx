@@ -8,6 +8,7 @@ import type { Signal } from '../types/signal'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import { clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, geographicViewsDiffer, type GeographicView } from '../lib/geography'
 import type { MigrationSnapshot } from '../lib/migration'
+import type { LifeGlobeSnapshot, LifeGlobeTaxon } from '../lib/lifeGlobe'
 
 interface Props {
   signals: Signal[]
@@ -26,6 +27,9 @@ interface Props {
   onViewChange?(view: GeographicView): void
   onRequestSolar?(): void
   migration?: MigrationSnapshot
+  migrationFocus?: MigrationSnapshot['corridors'][number]
+  life?: LifeGlobeSnapshot
+  lifeFocus?: LifeGlobeTaxon
 }
 
 interface EarthLabel { name: string; lat: number; lng: number; kind: 'land' | 'water' | 'place'; population?: number; capital?: boolean }
@@ -104,7 +108,7 @@ function createEarthMaterial() {
   })
 }
 
-function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestSolar, migration }: Props) {
+function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestSolar, migration, migrationFocus, life, lifeFocus }: Props) {
   const ref = useRef<GlobeMethods | undefined>(undefined)
   const hostRef = useRef<HTMLDivElement>(null)
   const onReadyRef = useRef(onReady)
@@ -146,8 +150,14 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
         maxRadius: Math.min(4.8, 1.8 + Math.log2(cell.observations + 1)),
         repeatPeriod: 2300,
       }))
-    return [...signalRings, ...migrationRings]
-  }, [batterySaver, migration, points, selected])
+    const lifeRings = (life?.cells ?? [])
+      .slice()
+      .sort((a, b) => b.observations - a.observations)
+      .slice(0, batterySaver ? 4 : 12)
+      .map((cell) => ({ id: `life-${cell.id}`, lat: cell.latitude, lng: cell.longitude, color: '#7edfd4', maxRadius: Math.min(4.2, 1.6 + Math.log2(cell.observations + 1)), repeatPeriod: 2700 }))
+    return [...signalRings, ...migrationRings, ...lifeRings]
+  }, [batterySaver, life, migration, points, selected])
+  const ecologicalCells = migration?.cells ?? life?.cells ?? []
   const forecastPaths = useMemo(() => signals.flatMap((signal) => {
     const value = signal.attributes.forecastTrack
     if (!Array.isArray(value)) return []
@@ -306,6 +316,11 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
   }, [selected])
 
   useEffect(() => {
+    const target = migrationFocus ? { latitude: migrationFocus.endLatitude, longitude: migrationFocus.endLongitude } : lifeFocus
+    if (target) ref.current?.pointOfView({ lat: target.latitude, lng: target.longitude, altitude: 0.88 }, 1200)
+  }, [lifeFocus, migrationFocus])
+
+  useEffect(() => {
     if (!ready || !radarEnabled || batterySaver) return
     const globe = ref.current
     if (!globe) return
@@ -389,12 +404,12 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       arcColor={() => ['rgba(164,255,204,.34)', 'rgba(199,255,222,1)']}
       arcAltitudeAutoScale={0.34} arcStroke={0.68} arcDashLength={0.28} arcDashGap={0.11}
       arcDashAnimateTime={batterySaver ? 0 : 3200}
-      hexBinPointsData={migration?.cells ?? []}
-      hexBinPointLat={(item) => (item as MigrationSnapshot['cells'][number]).latitude}
-      hexBinPointLng={(item) => (item as MigrationSnapshot['cells'][number]).longitude}
-      hexBinPointWeight={(item) => Math.min(8, (item as MigrationSnapshot['cells'][number]).observations)}
+      hexBinPointsData={ecologicalCells}
+      hexBinPointLat={(item) => (item as { latitude: number }).latitude}
+      hexBinPointLng={(item) => (item as { longitude: number }).longitude}
+      hexBinPointWeight={(item) => Math.min(8, (item as { observations: number }).observations)}
       hexBinResolution={3} hexMargin={0.13} hexAltitude={(bin) => Math.min(0.085, 0.012 + Number((bin as { sumWeight?: number }).sumWeight ?? 1) / 170)}
-      hexTopColor={() => 'rgba(164,255,204,.9)'} hexSideColor={() => 'rgba(54,142,102,.34)'} hexTransitionDuration={300}
+      hexTopColor={() => migration ? 'rgba(164,255,204,.9)' : 'rgba(126,223,212,.86)'} hexSideColor={() => migration ? 'rgba(54,142,102,.34)' : 'rgba(38,126,121,.3)'} hexTransitionDuration={300}
       onGlobeReady={() => {
         const globe = ref.current
         const renderer = globe?.renderer()
@@ -410,6 +425,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       {satelliteEnabled && <div className={`radar-provenance satellite ${satelliteStatus}`}><i/><span>{batterySaver ? 'CLOUDS PAUSED' : satelliteStatus === 'live' ? `NASA VIIRS CLOUDS · OBSERVED ${environmentalLayerStamp('satellite', layerReference).ageMinutes < 60 ? `${environmentalLayerStamp('satellite', layerReference).ageMinutes}M AGO` : `${Math.floor(environmentalLayerStamp('satellite', layerReference).ageMinutes / 60)}H AGO`}` : satelliteStatus === 'error' ? 'CLOUD IMAGERY UNAVAILABLE' : 'ACQUIRING OBSERVED CLOUDS'}</span></div>}
       {radarEnabled && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED' : radarStatus === 'live' ? `NOAA MRMS · RETRIEVED ${environmentalLayerStamp('radar', layerReference).ageMinutes}M AGO · US` : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
       {migration && <div className={`radar-provenance migration ${migration.freshness}`}><i/><span>GBIF BIRDS · {migration.freshness === 'cached' ? 'CACHED' : 'DERIVED 14D SHIFT'}</span></div>}
+      {life && <div className={`radar-provenance life ${life.freshness}`}><i/><span>GBIF LIFE · {life.freshness === 'cached' ? 'CACHED' : 'OBSERVED SAMPLE'}</span></div>}
     </div>
     {viewpoint.altitude > 2.35 && <div className={`space-transition-cue ${solarArmed ? 'armed' : ''}`}>{solarArmed ? 'PINCH OUT ONCE MORE · LEAVE EARTH' : 'CONTINUE OUTWARD · ORBIT'}</div>}
     {contextLost && <div className="map-loading renderer-recovery"><span/><strong>Restoring Earth</strong><small>Graphics context was interrupted</small></div>}
