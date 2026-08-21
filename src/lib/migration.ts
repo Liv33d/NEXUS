@@ -6,6 +6,7 @@ const AVES_TAXON_KEY = '212'
 const CACHE_KEY = 'nexus:migration:v1'
 const CACHE_TTL = 6 * 60 * 60 * 1000
 const MAX_RECORDS_PER_WINDOW = 300
+const WINDOW_PAGES = 2
 
 const occurrenceSchema = z.object({
   results: z.array(z.object({
@@ -168,7 +169,7 @@ function dateOnly(timestamp: number): string {
   return new Date(timestamp).toISOString().slice(0, 10)
 }
 
-async function fetchWindow(start: number, end: number, signal?: AbortSignal): Promise<BirdRecord[]> {
+async function fetchWindowPage(start: number, end: number, offset: number, signal?: AbortSignal): Promise<BirdRecord[]> {
   const params = new URLSearchParams({
     taxonKey: AVES_TAXON_KEY,
     hasCoordinate: 'true',
@@ -176,10 +177,20 @@ async function fetchWindow(start: number, end: number, signal?: AbortSignal): Pr
     occurrenceStatus: 'PRESENT',
     eventDate: `${dateOnly(start)},${dateOnly(end)}`,
     limit: String(MAX_RECORDS_PER_WINDOW),
+    offset: String(offset),
   })
+  // Filter server-side so a page dominated by noncommercial records does not
+  // collapse the visualization after local license governance is applied.
+  params.append('license', 'CC0_1_0')
+  params.append('license', 'CC_BY_4_0')
   const response = await fetchWithTimeout(`https://api.gbif.org/v1/occurrence/search?${params}`, { signal }, 12_000)
   if (!response.ok) throw providerHttpError(response, 'gbif-migration')
   return occurrenceSchema.parse(await response.json()).results
+}
+
+async function fetchWindow(start: number, end: number, signal?: AbortSignal): Promise<BirdRecord[]> {
+  const pages = await Promise.all(Array.from({ length: WINDOW_PAGES }, (_, index) => fetchWindowPage(start, end, index * MAX_RECORDS_PER_WINDOW, signal)))
+  return pages.flat()
 }
 
 export async function fetchMigrationSnapshot(signal?: AbortSignal, force = false): Promise<MigrationSnapshot> {
@@ -187,7 +198,7 @@ export async function fetchMigrationSnapshot(signal?: AbortSignal, force = false
   if (!force) {
     try {
       cached = JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null') as MigrationSnapshot | null
-      if (cached && Date.now() - cached.retrievedAt < CACHE_TTL) return { ...cached, freshness: 'live' }
+      if (cached && Date.now() - cached.retrievedAt < CACHE_TTL) return { ...cached, freshness: 'cached' }
     } catch { /* storage is optional */ }
   }
   const now = Date.now()

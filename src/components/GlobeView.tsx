@@ -30,6 +30,7 @@ interface Props {
 
 interface EarthLabel { name: string; lat: number; lng: number; kind: 'land' | 'water' | 'place'; population?: number; capital?: boolean }
 interface GlobeViewpoint { lat: number; lng: number; altitude: number }
+interface GlobeRing { id: string; lat: number; lng: number; color: string; maxRadius: number; repeatPeriod: number }
 
 const WORLD_LABELS: EarthLabel[] = [
   { name: 'NORTH AMERICA', lat: 47, lng: -103, kind: 'land' }, { name: 'SOUTH AMERICA', lat: -18, lng: -59, kind: 'land' },
@@ -122,10 +123,31 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
   const earthMaterial = useMemo(createEarthMaterial, [])
   const labels = useMemo(() => cityLabelsForView(viewpoint), [viewpoint])
   const points = useMemo(() => signals.filter((signal) => signal.location).slice(0, batterySaver ? 350 : 1200), [signals, batterySaver])
-  const rings = useMemo(() => {
+  const rings = useMemo<GlobeRing[]>(() => {
     const notable = points.filter((signal) => (signal.severity ?? 0) >= 58).slice(0, batterySaver ? 8 : 24)
-    return selected?.location && !notable.some((signal) => signal.id === selected.id) ? [selected, ...notable] : notable
-  }, [batterySaver, points, selected])
+    const signalRings = (selected?.location && !notable.some((signal) => signal.id === selected.id) ? [selected, ...notable] : notable)
+      .map((signal) => ({
+        id: signal.id,
+        lat: signal.location!.latitude,
+        lng: signal.location!.longitude,
+        color: signal.id === selected?.id ? '#dffffa' : typeColor[signal.type],
+        maxRadius: 1.1 + (signal.severity ?? 0) / 24,
+        repeatPeriod: 1700,
+      }))
+    const migrationRings = (migration?.cells ?? [])
+      .slice()
+      .sort((a, b) => b.observations - a.observations)
+      .slice(0, batterySaver ? 4 : 12)
+      .map((cell) => ({
+        id: `migration-${cell.id}`,
+        lat: cell.latitude,
+        lng: cell.longitude,
+        color: '#a4ffcc',
+        maxRadius: Math.min(4.8, 1.8 + Math.log2(cell.observations + 1)),
+        repeatPeriod: 2300,
+      }))
+    return [...signalRings, ...migrationRings]
+  }, [batterySaver, migration, points, selected])
   const forecastPaths = useMemo(() => signals.flatMap((signal) => {
     const value = signal.attributes.forecastTrack
     if (!Array.isArray(value)) return []
@@ -292,7 +314,10 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
     setRadarStatus('loading')
     const texture = new TextureLoader().setCrossOrigin('anonymous').load(noaaRadarImage(), (loaded) => {
       if (cancelled) { loaded.dispose(); return }
-      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.006, 96, 64), new MeshBasicMaterial({ map: loaded, transparent: true, opacity: 0.78, depthWrite: false }))
+      // Keep raster shells well clear of Earth, borders and one another. The
+      // former 1.003–1.006 radii were effectively coplanar on mobile GPUs and
+      // produced the flicker seen on iPhone when the camera moved.
+      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.022, 96, 64), new MeshBasicMaterial({ map: loaded, transparent: true, opacity: 0.7, depthWrite: false }))
       mesh.renderOrder = 4
       globe.scene().add(mesh)
       setRadarStatus('live')
@@ -314,16 +339,18 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
     const texture = new TextureLoader().setCrossOrigin('anonymous').load(nasaObservedCloudImage(layerReference), (loaded) => {
       if (cancelled) { loaded.dispose(); return }
       loaded.colorSpace = SRGBColorSpace
-      // Daily GIBS true-colour is globally registered. The shader suppresses
-      // land/ocean content and retains bright, low-chroma observed cloud.
+      // Daily GIBS true-colour is globally registered. Because this is not a
+      // cloud-mask product, reject chromatic terrain aggressively and retain
+      // only bright, nearly neutral pixels. This prevents the imagery from
+      // painting a second, misaligned Earth over the actual globe.
       const material = new ShaderMaterial({
-        uniforms: { cloudTexture: { value: loaded }, opacity: { value: 0.48 } },
+        uniforms: { cloudTexture: { value: loaded }, opacity: { value: 0.34 } },
         vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-        fragmentShader: `uniform sampler2D cloudTexture;uniform float opacity;varying vec2 vUv;void main(){vec3 c=texture2D(cloudTexture,vUv).rgb;float hi=max(c.r,max(c.g,c.b));float lo=min(c.r,min(c.g,c.b));float lum=dot(c,vec3(.2126,.7152,.0722));float neutral=1.0-smoothstep(.08,.34,hi-lo);float cloud=smoothstep(.27,.72,lum)*mix(.38,1.0,neutral)*smoothstep(.035,.13,hi);if(cloud<.025)discard;vec3 cloudColor=mix(c,vec3(.94,.98,1.0),.72);gl_FragColor=vec4(cloudColor,cloud*opacity);}`,
+        fragmentShader: `uniform sampler2D cloudTexture;uniform float opacity;varying vec2 vUv;void main(){vec3 c=texture2D(cloudTexture,vUv).rgb;float hi=max(c.r,max(c.g,c.b));float lo=min(c.r,min(c.g,c.b));float lum=dot(c,vec3(.2126,.7152,.0722));float chroma=hi-lo;float neutral=1.0-smoothstep(.055,.17,chroma);float cloud=smoothstep(.46,.82,lum)*pow(neutral,1.7);if(cloud<.055)discard;vec3 cloudColor=mix(vec3(.78,.88,.92),vec3(.98,1.0,1.0),smoothstep(.55,.92,lum));gl_FragColor=vec4(cloudColor,cloud*opacity);}`,
         transparent: true,
         depthWrite: false,
       })
-      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.003, 72, 48), material)
+      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.012, 72, 48), material)
       mesh.renderOrder = 3
       globe.scene().add(mesh)
       setSatelliteStatus('live')
@@ -344,13 +371,13 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       labelSize={(item) => (item as EarthLabel).kind === 'place' ? Math.max(0.11, Math.min(0.23, 0.12 + Math.log10(Math.max((item as EarthLabel).population ?? 1, 1)) / 60)) : (item as EarthLabel).kind === 'water' ? 0.36 : 0.5}
       labelAltitude={0.013} labelIncludeDot={(item) => (item as EarthLabel).kind === 'place'} labelDotRadius={(item) => (item as EarthLabel).capital ? 0.065 : 0.045} labelResolution={3} labelsTransitionDuration={180}
       polygonsData={labelsEnabled ? countries : []} polygonGeoJsonGeometry={(item) => (item as Feature<Polygon | MultiPolygon>).geometry as never}
-      polygonCapColor={() => 'rgba(0,0,0,0)'} polygonSideColor={() => 'rgba(0,0,0,0)'} polygonStrokeColor={() => 'rgba(206,238,235,.22)'} polygonAltitude={0.0035} polygonsTransitionDuration={0}
+      polygonCapColor={() => 'rgba(0,0,0,0)'} polygonSideColor={() => 'rgba(0,0,0,0)'} polygonStrokeColor={() => 'rgba(206,238,235,.22)'} polygonAltitude={0.0025} polygonsTransitionDuration={0}
       pointsData={points} pointLat={(item) => (item as Signal).location!.latitude} pointLng={(item) => (item as Signal).location!.longitude}
       pointAltitude={(item) => 0.008 + ((item as Signal).severity ?? 10) / 5000} pointRadius={(item) => 0.12 + ((item as Signal).severity ?? 10) / 190}
       pointColor={(item) => typeColor[(item as Signal).type]} pointLabel={() => ''} onPointClick={(item) => onSelect(item as Signal)}
-      ringsData={rings} ringLat={(item) => (item as Signal).location!.latitude} ringLng={(item) => (item as Signal).location!.longitude}
-      ringColor={(item: object) => (item as Signal).id === selected?.id ? '#dffffa' : typeColor[(item as Signal).type]}
-      ringMaxRadius={(item) => 1.1 + ((item as Signal).severity ?? 0) / 24} ringPropagationSpeed={batterySaver ? 0 : 0.55} ringRepeatPeriod={batterySaver ? Infinity : 1700}
+      ringsData={rings} ringLat={(item) => (item as GlobeRing).lat} ringLng={(item) => (item as GlobeRing).lng}
+      ringColor={(item: object) => (item as GlobeRing).color} ringMaxRadius={(item) => (item as GlobeRing).maxRadius}
+      ringPropagationSpeed={batterySaver ? 0 : 0.55} ringRepeatPeriod={(item: object) => batterySaver ? Infinity : (item as GlobeRing).repeatPeriod}
       pathsData={forecastPaths} pathPoints={(item) => (item as { points: Array<{ lat: number; lng: number }> }).points}
       pathPointLat={(point) => (point as { lat: number }).lat} pathPointLng={(point) => (point as { lng: number }).lng}
       pathColor={() => ['rgba(160,220,255,.95)', 'rgba(143,245,232,.42)']} pathStroke={1.2} pathDashLength={0.08} pathDashGap={0.045} pathDashAnimateTime={batterySaver ? 0 : 5200} pathPointAlt={() => 0.018}
@@ -359,15 +386,15 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       arcStartLng={(item) => (item as MigrationSnapshot['corridors'][number]).startLongitude}
       arcEndLat={(item) => (item as MigrationSnapshot['corridors'][number]).endLatitude}
       arcEndLng={(item) => (item as MigrationSnapshot['corridors'][number]).endLongitude}
-      arcColor={() => ['rgba(164,255,204,.18)', 'rgba(164,255,204,.92)']}
-      arcAltitudeAutoScale={0.28} arcStroke={0.42} arcDashLength={0.24} arcDashGap={0.16}
-      arcDashAnimateTime={batterySaver ? 0 : 4200}
+      arcColor={() => ['rgba(164,255,204,.34)', 'rgba(199,255,222,1)']}
+      arcAltitudeAutoScale={0.34} arcStroke={0.68} arcDashLength={0.28} arcDashGap={0.11}
+      arcDashAnimateTime={batterySaver ? 0 : 3200}
       hexBinPointsData={migration?.cells ?? []}
       hexBinPointLat={(item) => (item as MigrationSnapshot['cells'][number]).latitude}
       hexBinPointLng={(item) => (item as MigrationSnapshot['cells'][number]).longitude}
       hexBinPointWeight={(item) => Math.min(8, (item as MigrationSnapshot['cells'][number]).observations)}
-      hexBinResolution={3} hexMargin={0.22} hexAltitude={(bin) => Math.min(0.06, 0.006 + Number((bin as { sumWeight?: number }).sumWeight ?? 1) / 220)}
-      hexTopColor={() => 'rgba(151,255,197,.66)'} hexSideColor={() => 'rgba(54,142,102,.18)'} hexTransitionDuration={400}
+      hexBinResolution={3} hexMargin={0.13} hexAltitude={(bin) => Math.min(0.085, 0.012 + Number((bin as { sumWeight?: number }).sumWeight ?? 1) / 170)}
+      hexTopColor={() => 'rgba(164,255,204,.9)'} hexSideColor={() => 'rgba(54,142,102,.34)'} hexTransitionDuration={300}
       onGlobeReady={() => {
         const globe = ref.current
         const renderer = globe?.renderer()
