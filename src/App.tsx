@@ -87,7 +87,11 @@ export default function App() {
   }, [])
   const handleMapViewChange = useCallback((view: GeographicView) => setGeographicView(clampGeographicView(view)), [])
   const returnToGlobe = useCallback(() => { if (webGLAvailable) setVisualMode('globe') }, [webGLAvailable])
-  const enterSolarSystem = useCallback(() => { setActivePanel(undefined); setEarthDomain('solar') }, [])
+  const enterSolarSystem = useCallback(() => {
+    if (!webGLAvailable) return
+    setActivePanel(undefined)
+    setEarthDomain('solar')
+  }, [webGLAvailable])
   const activateEarthLens = useCallback((lens: EarthLensId) => {
     setActiveEarthLens(lens)
     if (lens === 'world') {
@@ -196,7 +200,7 @@ export default function App() {
               <div className="domain-heading"><span>EXPLORE BY DOMAIN</span><small>Each lens changes the evidence shown on Earth</small></div>
               <div className="domain-lens-grid" id="domain-lenses-heading" role="group" aria-label="Earth domain lenses">
                 <button className={activeEarthLens === 'world' ? 'active' : ''} onClick={() => activateEarthLens('world')}><Globe2/><span><strong>Living Earth</strong><small>All verified planetary signals</small></span><b>LIVE</b></button>
-                <button className="solar-domain" onClick={enterSolarSystem}><Orbit/><span><strong>Solar System</strong><small>Calculated planets, Moon and Sun</small></span><b>OPEN</b></button>
+                <button className="solar-domain" onClick={enterSolarSystem} disabled={!webGLAvailable} aria-disabled={!webGLAvailable}><Orbit/><span><strong>Solar System</strong><small>{webGLAvailable ? 'Calculated planets, Moon and Sun' : 'Requires WebGL 2 on this device'}</small></span><b>{webGLAvailable ? 'OPEN' : 'UNAVAILABLE'}</b></button>
                 <button className={activeEarthLens === 'weather' ? 'active' : ''} onClick={() => activateEarthLens('weather')}><CloudRain/><span><strong>Atmosphere</strong><small>Radar, clouds, storms and alerts</small></span><b>LIVE</b></button>
                 <button className={activeEarthLens === 'migration' ? 'active life-domain' : 'life-domain'} onClick={() => activateEarthLens('migration')}><Bird/><span><strong>Bird Migration</strong><small>GBIF observation shifts · derived</small></span><b>{migrationStatus === 'loading' ? '…' : migrationEnabled ? 'ON' : 'VIEW'}</b></button>
                 <button className={activeEarthLens === 'maritime' ? 'active ocean-domain' : 'ocean-domain'} onClick={() => activateEarthLens('maritime')}><ShipWheel/><span><strong>Maritime</strong><small>Ocean hazards and public context</small></span><b>CONTEXT</b></button>
