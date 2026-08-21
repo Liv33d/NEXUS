@@ -20,6 +20,10 @@ describe('migration evidence', () => {
     expect(result.cells.length).toBeGreaterThan(0)
     expect(result.corridors).toHaveLength(1)
     expect(result.corridors[0]?.species).toBe('Hirundo rustica')
+    expect(result.corridors[0]?.commonName).toBe('Barn Swallow')
+    expect(result.corridors[0]?.distanceKm).toBeGreaterThan(100)
+    expect(result.corridors[0]?.direction).toMatch(/north/)
+    expect(result.species[0]).toMatchObject({ species: 'Hirundo rustica', commonName: 'Barn Swallow', recentObservations: 4, priorObservations: 4 })
     expect(result.methodology).toContain('not forecasts')
   })
 
