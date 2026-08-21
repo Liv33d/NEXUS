@@ -179,6 +179,10 @@ async function fetchWindowPage(start: number, end: number, offset: number, signa
     limit: String(MAX_RECORDS_PER_WINDOW),
     offset: String(offset),
   })
+  // Filter server-side so a page dominated by noncommercial records does not
+  // collapse the visualization after local license governance is applied.
+  params.append('license', 'CC0_1_0')
+  params.append('license', 'CC_BY_4_0')
   const response = await fetchWithTimeout(`https://api.gbif.org/v1/occurrence/search?${params}`, { signal }, 12_000)
   if (!response.ok) throw providerHttpError(response, 'gbif-migration')
   return occurrenceSchema.parse(await response.json()).results
