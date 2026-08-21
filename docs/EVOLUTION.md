@@ -8,6 +8,7 @@ This decision log is grounded in the shipped application, current provider terms
 - **Your Earth / local Watch foundation.** Saved points may be watched for elevated nearby Signals. Evaluation is explainable and local while NEXUS is open; background delivery is not implied.
 - **Ocean context.** Coastal and ocean points show bounded, labeled wave, sea-surface-temperature and current model context. Oceans should not read as empty map area.
 - **Pulse credibility.** Continue improving deterministic baselines, suppress single-feed noise, and show component scores and evidence scope before adding more feeds.
+- **Authoritative active cyclones.** Normalize NHC's episodic RSS-linked forecast tracks, cones, and watches as modeled/forecast geometry without duplicating generic weather alerts.
 - **Adaptive rendering.** Keep a single WebGL context, pause hidden work, cap pixel ratio, and make AUTO the trustworthy default.
 
 ## Architect now / build later
@@ -16,6 +17,7 @@ This decision log is grounded in the shipped application, current provider terms
 - **VISIBLE FROM HERE.** Use selected CelesTrak OMM groups, local SGP4 propagation, and device location/time. Retrieval must obey the two-hour source cadence and pass accuracy tests.
 - **Atlas and Culture.** Resolve places and entities first; then add authoritative country context and open-access collection objects such as The Met, with object-to-place connections rather than generic prose.
 - **NEXUS Memory.** Aggregate per H3 cell, category, and time bucket. Preserve summaries and seasonal baselines instead of accumulating unlimited raw records.
+- **Wildlife Journeys.** Use curated DOI-linked Movebank repository studies as finite sourced stories; never treat restricted studies as an open live feed.
 - **Native delivery boundary.** Keep Watch rules independent of delivery so a future Capacitor shell can add push, haptics, widgets, and background behavior without rewriting providers.
 
 ## Experiment
