@@ -6,6 +6,7 @@ import { sanitizeAreaGeometry } from '../lib/geospatial'
 import { noaaGeoColorImage, noaaRadarImage } from '../lib/mapLayers'
 import type { Signal } from '../types/signal'
 import ConnectedMapView from './ConnectedMapView'
+import type { GeographicView } from '../lib/geography'
 
 interface Props {
   signals: Signal[]
@@ -14,6 +15,8 @@ interface Props {
   radarEnabled?: boolean
   satelliteEnabled?: boolean
   mapTheme?: 'dark' | 'street'
+  initialView?: GeographicView
+  onViewChange?(view: GeographicView): void
 }
 
 type WorldFeature = Feature<Polygon | MultiPolygon>

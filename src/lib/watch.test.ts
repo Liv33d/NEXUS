@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createPlaceWatch, evaluateWatch, placeWatchId } from './watch'
+import { createPlaceWatch, evaluateWatch, evaluateWatchTriggers, placeWatchId } from './watch'
 import type { Signal } from '../types/signal'
 
 const signal = (id: string, latitude: number, longitude: number, severity: number): Signal => ({
@@ -12,7 +12,7 @@ describe('local watch engine', () => {
   it('uses stable place IDs and transparent default conditions', () => {
     const watch = createPlaceWatch({ id: 1, name: 'Caguas', subtitle: 'Puerto Rico', latitude: 18.2388, longitude: -66.0352 }, 100)
     expect(watch.id).toBe(placeWatchId(18.2388, -66.0352))
-    expect(watch.conditions).toEqual({ radiusKm: 250, minimumSeverity: 55 })
+    expect(watch.conditions).toEqual({ radiusKm: 250, minimumSeverity: 55, cooldownMs: 900000, dedupeWindowMs: 86400000 })
     expect(watch.delivery).toBe('in-app')
   })
 
@@ -21,5 +21,15 @@ describe('local watch engine', () => {
     const match = evaluateWatch(watch, [signal('near', 18.5, -66.2, 70), signal('low', 18.4, -66.1, 20), signal('far', 30, -66, 90)], 200)
     expect(match.signalIds).toEqual(['near'])
     expect(match.evaluatedAt).toBe(200)
+  })
+
+  it('deduplicates triggers and applies a rule cooldown', () => {
+    const watch = createPlaceWatch({ id: 1, name: 'Caguas', subtitle: 'Puerto Rico', latitude: 18.2388, longitude: -66.0352 }, 0)
+    const first = evaluateWatchTriggers(watch, [signal('near', 18.5, -66.2, 70), signal('second', 18.3, -66.1, 75)], [], 1_000_000)
+    expect(first).toHaveLength(1)
+    const repeated = evaluateWatchTriggers(watch, [signal('near', 18.5, -66.2, 70)], first, 1_100_000)
+    expect(repeated).toHaveLength(1)
+    expect(repeated[0]?.id).toBe(first[0]?.id)
+    expect(repeated[0]?.lastSeenAt).toBe(1_100_000)
   })
 })

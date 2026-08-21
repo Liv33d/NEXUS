@@ -21,10 +21,22 @@ NEXUS is a static, local-first Progressive Web App. The core application require
 - Current merged GOES-East/West GeoColor is requested directly from NOAA/NESDIS as a WGS84 export and placed on a separate, low-opacity additive globe sphere so dark source pixels cannot extinguish the illuminated Earth. It is an observation layer, not a global forecast.
 - Browsers without WebGL 2 receive a coordinate-precise, keyboard-accessible Signal list instead of a geographically misleading illustration.
 
+### Geographic lifecycle contract
+
+- GlobeGL and MapLibre are long-lived renderers. Provider-status changes never recreate them.
+- Camera motion stays inside the renderer while a gesture or inertial animation is active. React receives one guarded `GeographicView` when movement settles.
+- Globe and map share that validated camera target and convert between globe altitude and map zoom, preserving context across mode switches.
+- Each renderer owns exactly one container `ResizeObserver`, coalesces resizing into animation frames, and handles WebGL context loss/restoration explicitly.
+- Signal, polygon and track changes update bounded data layers incrementally. They do not rebuild the renderer.
+
 - Active NHC geometry and selected CelesTrak OMM elements are normalized during a scheduled GitHub Pages build. These small same-origin snapshots solve upstream CORS constraints and enforce provider-friendly polling without adding a proprietary runtime backend.
 - Observer's orbital propagation runs in a dedicated worker. GBIF LIFE context is bounded, permissive-license filtered, and fetched only for a selected place.
 
 Provider failure is isolated. The application continues with cached data and its deterministic Demo Mode.
+
+## Watch pipeline
+
+Watch evaluation is provider-independent: `Provider → Signal → WatchRule → WatchTrigger → WatchDeliveryAdapter`. Current place/radius rules evaluate severity and optional Signal categories, persist triggers in IndexedDB, deduplicate the same Signal for 24 hours, and apply a 15-minute per-rule cooldown. The current delivery adapter is in-app; a future native adapter can add push without modifying providers.
 
 ## Performance
 

@@ -6,9 +6,9 @@ import { liveProviders } from '../providers/registry'
 import { runProvider } from '../providers/runtime'
 import { ProviderError } from '../providers/types'
 import type { ObserverPlace } from '../providers/openMeteo'
-import { createPlaceWatch, placeWatchId } from '../lib/watch'
+import { createPlaceWatch, evaluateWatchTriggers, inAppWatchDelivery, placeWatchId } from '../lib/watch'
 import { aggregateMemory } from '../lib/memory'
-import type { WatchRule } from '../types/watch'
+import type { WatchRule, WatchTrigger } from '../types/watch'
 import type { Discovery, MemoryBucket, ProviderStatus, Signal, SignalType } from '../types/signal'
 
 export type ViewId = 'earth' | 'discover' | 'cases' | 'observer' | 'settings'
@@ -29,6 +29,7 @@ interface NexusState {
   firmsConfigured: boolean
   observerPlace?: ObserverPlace
   watches: WatchRule[]
+  watchTriggers: WatchTrigger[]
   layerVisibility: Record<SignalType, boolean>
   setView(view: ViewId): void
   observePlace(place: ObserverPlace): void
@@ -85,6 +86,7 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   firmsConfigured: false,
   observerPlace: undefined,
   watches: [],
+  watchTriggers: [],
   layerVisibility: { earthquake: true, fire: true, weather: true, aircraft: true, satellite: true, 'space-weather': true, media: true, environment: true, infrastructure: true },
   setView: (view) => set({ view, selectedSignalId: undefined, selectedDiscoveryId: undefined }),
   observePlace: (observerPlace) => set({ observerPlace, view: 'observer', selectedSignalId: undefined, selectedDiscoveryId: undefined }),
@@ -130,20 +132,21 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   initialize: async () => {
     try {
       await pruneDatabase()
-      const [cached, storedStatuses, layerSetting, demoSetting, firmsSetting, watches] = await Promise.all([
+      const [cached, storedStatuses, layerSetting, demoSetting, firmsSetting, watches, watchTriggers] = await Promise.all([
         db.signals.orderBy('timestamp').reverse().limit(3000).toArray(),
         db.providerStatus.toArray(),
         db.settings.get('layers'),
         db.settings.get('demoMode'),
         db.settings.get('firmsMapKey'),
         db.watches.toArray(),
+        db.watchTriggers.toArray(),
       ])
       const statuses = { ...get().statuses, ...Object.fromEntries(storedStatuses.map((status) => [status.providerId, status])) }
       const layerVisibility = layerSetting?.value && typeof layerSetting.value === 'object' ? { ...get().layerVisibility, ...layerSetting.value as Partial<Record<SignalType, boolean>> } : get().layerVisibility
       const demoMode = demoSetting?.value === true
       const firmsConfigured = typeof firmsSetting?.value === 'string' && firmsSetting.value.length > 0
-      if (cached.length) set({ signals: cached.map(cachedCopy), discoveries: await deriveWithSaved(cached), statuses, layerVisibility, demoMode, firmsConfigured, watches })
-      else set({ statuses, layerVisibility, demoMode, firmsConfigured, watches })
+      if (cached.length) set({ signals: cached.map(cachedCopy), discoveries: await deriveWithSaved(cached), statuses, layerVisibility, demoMode, firmsConfigured, watches, watchTriggers })
+      else set({ statuses, layerVisibility, demoMode, firmsConfigured, watches, watchTriggers })
     } catch {
       // Safari private browsing and low-storage conditions can disable IndexedDB.
       // NEXUS remains useful as a live, memory-only experience.
@@ -161,7 +164,11 @@ export const useNexusStore = create<NexusState>((set, get) => ({
 
     if (demoMode) {
       const signals = await demoProvider.fetchSignals(context)
-      set({ signals, discoveries: await deriveWithSaved(signals), isRefreshing: false, lastRefreshed: Date.now() })
+      const previous = get().watchTriggers
+      const watchTriggers = get().watches.flatMap((watch) => evaluateWatchTriggers(watch, signals, previous, now))
+      try { if (watchTriggers.length) await db.watchTriggers.bulkPut(watchTriggers) } catch { /* In-app trigger history remains in memory. */ }
+      await inAppWatchDelivery.deliver(watchTriggers)
+      set({ signals, discoveries: await deriveWithSaved(signals), watchTriggers, isRefreshing: false, lastRefreshed: Date.now() })
       return
     }
 
@@ -199,7 +206,11 @@ export const useNexusStore = create<NexusState>((set, get) => ({
       const buckets = aggregateMemory(retained, Date.now())
       if (buckets.length) await db.memory.bulkPut(buckets)
     } catch { /* Planetary Memory degrades to this-session learning when IndexedDB is unavailable. */ }
-    set({ signals: deduped, discoveries: await deriveWithSaved(deduped), isRefreshing: false, lastRefreshed: Date.now() })
+    const previous = get().watchTriggers
+    const watchTriggers = get().watches.flatMap((watch) => evaluateWatchTriggers(watch, deduped, previous, now))
+    try { if (watchTriggers.length) await db.watchTriggers.bulkPut(watchTriggers) } catch { /* In-app trigger history remains in memory. */ }
+    await inAppWatchDelivery.deliver(watchTriggers)
+    set({ signals: deduped, discoveries: await deriveWithSaved(deduped), watchTriggers, isRefreshing: false, lastRefreshed: Date.now() })
   },
   saveDiscovery: async (id) => {
     const discovery = get().discoveries.find((item) => item.id === id)
@@ -228,7 +239,7 @@ export const useNexusStore = create<NexusState>((set, get) => ({
     } catch { /* Private browsing may deny localStorage access. */ }
     recentSurprises.length = 0
     set({
-      signals: [], discoveries: [], watches: [], observerPlace: undefined, selectedSignalId: undefined, selectedDiscoveryId: undefined,
+      signals: [], discoveries: [], watches: [], watchTriggers: [], observerPlace: undefined, selectedSignalId: undefined, selectedDiscoveryId: undefined,
       demoMode: false, firmsConfigured: false, isRefreshing: false, lastRefreshed: undefined,
       statuses: Object.fromEntries(liveProviders.map((provider) => [provider.id, { providerId: provider.id, providerName: provider.name, state: 'idle' }])),
     })
@@ -251,6 +262,10 @@ export const useNexusStore = create<NexusState>((set, get) => ({
 }))
 
 export function selectVisibleSignals(state: NexusState): Signal[] {
-  const cutoff = Date.now() - windowMs[state.timeWindow]
-  return state.signals.filter((signal) => (signal.timestamp >= cutoff || (signal.endTime ?? 0) >= cutoff) && state.layerVisibility[signal.type])
+  return filterVisibleSignals(state.signals, state.timeWindow, state.layerVisibility)
+}
+
+export function filterVisibleSignals(signals: Signal[], timeWindow: TimeWindow, layerVisibility: Record<SignalType, boolean>, now = Date.now()): Signal[] {
+  const cutoff = now - windowMs[timeWindow]
+  return signals.filter((signal) => (signal.timestamp >= cutoff || (signal.endTime ?? 0) >= cutoff) && layerVisibility[signal.type])
 }

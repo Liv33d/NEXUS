@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, Map, MonitorUp, Moon, RefreshCw, Satellite, Search, SunMedium, X } from 'lucide-react'
 import { BottomNav, TopBar } from './components/Chrome'
 import { CasesPage, DiscoverPage, ObserverPage, SearchPanel, SurpriseButton } from './components/Pages'
@@ -7,8 +7,9 @@ import { SignalSheet } from './components/SignalSheet'
 import { TimeControl } from './components/TimeControl'
 import { ReplayControl } from './components/ReplayControl'
 import { AccessibleEarthFallback } from './components/AccessibleEarthFallback'
-import { selectVisibleSignals, useNexusStore } from './store/useNexusStore'
+import { filterVisibleSignals, useNexusStore } from './store/useNexusStore'
 import type { Discovery, Signal, SignalType } from './types/signal'
+import { DEFAULT_GEOGRAPHIC_VIEW, type GeographicView } from './lib/geography'
 
 const GlobeView = lazy(() => import('./components/GlobeView'))
 const MapView = lazy(() => import('./components/MapView'))
@@ -62,15 +63,20 @@ export default function App() {
   const [ambientMode, setAmbientMode] = useState(false)
   const [replayCutoff, setReplayCutoff] = useState<number>()
   const [ambientIdle, setAmbientIdle] = useState(false)
+  const [geographicView, setGeographicView] = useState<GeographicView>(DEFAULT_GEOGRAPHIC_VIEW)
   const wakeLock = useRef<WakeLockSentinel | null>(null)
   const ambientActive = ambientMode && store.view === 'earth'
-  const windowSignals = selectVisibleSignals(store)
-  const visibleSignals = replayCutoff ? windowSignals.filter((signal) => signal.timestamp <= replayCutoff) : windowSignals
-  const selectedSignal = store.signals.find((signal) => signal.id === store.selectedSignalId)
+  const windowSignals = useMemo(() => filterVisibleSignals(store.signals, store.timeWindow, store.layerVisibility), [store.layerVisibility, store.signals, store.timeWindow])
+  const visibleSignals = useMemo(() => replayCutoff ? windowSignals.filter((signal) => signal.timestamp <= replayCutoff) : windowSignals, [replayCutoff, windowSignals])
+  const selectedSignal = useMemo(() => store.signals.find((signal) => signal.id === store.selectedSignalId), [store.selectedSignalId, store.signals])
   const liveSourceCount = Object.values(store.statuses).filter((status) => status.state === 'live').length
   const significantCount = store.discoveries.filter((item) => item.score >= 61).length
   const leadDiscovery = store.discoveries[0]
   const activeLayerCount = Object.values(store.layerVisibility).filter(Boolean).length
+  const selectSignalById = store.selectSignal
+  const markGlobeReady = store.setGlobeReady
+  const selectSignal = useCallback((signal: Signal) => selectSignalById(signal.id), [selectSignalById])
+  const globeReady = useCallback(() => markGlobeReady(true), [markGlobeReady])
 
   useEffect(() => {
     void store.initialize()
@@ -117,8 +123,8 @@ export default function App() {
 
   const earthContent = useMemo(() => (
     <>
-      {visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading geographic detail</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} mapTheme={mapTheme} onSelect={(signal) => store.selectSignal(signal.id)}/></Suspense> : !webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={(signal) => store.selectSignal(signal.id)}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
-        <GlobeView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} lightingMode={lightingMode} batterySaver={performanceMode === 'battery'} qualityMode={performanceMode} autoRotate={autoRotate} atmosphereEnabled={atmosphere} labelsEnabled={labels} onSelect={(signal) => store.selectSignal(signal.id)} onReady={() => store.setGlobeReady(true)}/>
+      {visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading geographic detail</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} mapTheme={mapTheme} initialView={geographicView} onViewChange={setGeographicView} onSelect={selectSignal}/></Suspense> : !webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={selectSignal}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
+        <GlobeView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} lightingMode={lightingMode} batterySaver={performanceMode === 'battery'} qualityMode={performanceMode} autoRotate={autoRotate} atmosphereEnabled={atmosphere} labelsEnabled={labels} initialView={geographicView} onViewChange={setGeographicView} onSelect={selectSignal} onReady={globeReady}/>
       </Suspense>} 
       <div className="earth-overlay">
         <button className={`world-pulse ${leadDiscovery ? `level-${leadDiscovery.level}` : ''}`} onClick={() => leadDiscovery && store.selectDiscovery(leadDiscovery.id)} disabled={!leadDiscovery}>
@@ -174,7 +180,7 @@ export default function App() {
       {selectedSignal && <SignalSheet signal={selectedSignal} onClose={() => store.selectSignal(undefined)}/>} 
       {replayCutoff && <button className="replay-indicator" onClick={() => { setReplayCutoff(undefined); setActivePanel('time') }}><span>REPLAY · {new Date(replayCutoff).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><strong>Return live</strong></button>}
     </>
-  ), [activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, performanceMode, radarEnabled, replayCutoff, satelliteEnabled, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable, windowSignals])
+  ), [activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, geographicView, globeReady, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, performanceMode, radarEnabled, replayCutoff, satelliteEnabled, selectSignal, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable, windowSignals])
 
   return (
     <div className={`app-shell ${ambientActive && ambientIdle ? 'ambient-idle' : ''}`}>
