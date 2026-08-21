@@ -25,6 +25,8 @@ describe('mobile interaction layout contract', () => {
     expect(app).toContain('onRequestSolar={enterSolarSystem}')
     expect(app).not.toContain('solar-launch')
     expect(app).toContain('<strong>Solar System</strong>')
+    expect(app).toContain('disabled={!webGLAvailable}')
+    expect(app).toContain("if (!webGLAvailable) return")
     expect(styles).toContain('.space-transition-cue')
   })
 
