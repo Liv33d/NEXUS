@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FeatureCollection, LineString, Point } from 'geojson'
-import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from 'maplibre-gl'
+import { Map as MapLibreMap, setWorkerUrl, type GeoJSONSource } from 'maplibre-gl'
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { noaaGeoColorTileTemplate, noaaRadarTileTemplate } from '../lib/mapLayers'
 import { signalAreasGeoJSON } from '../lib/geospatial'
 import type { Signal } from '../types/signal'
-import { altitudeToMapZoom, clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, mapZoomToAltitude, type GeographicView } from '../lib/geography'
+import { altitudeToMapZoom, clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, mapZoomToAltitude, shouldReturnToGlobe, type GeographicView } from '../lib/geography'
 
 setWorkerUrl(mapWorkerUrl)
 
@@ -20,6 +20,7 @@ interface Props {
   onFallback(): void
   initialView?: GeographicView
   onViewChange?(view: GeographicView): void
+  onRequestGlobe?(): void
 }
 
 type SignalProperties = { id: string; title: string; type: Signal['type']; severity: number }
@@ -56,12 +57,13 @@ function removeWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satell
   if (map.getSource(id)) map.removeSource(id)
 }
 
-export default function ConnectedMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange }: Props) {
+export default function ConnectedMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestGlobe }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const signalsRef = useRef(signals)
   const onSelectRef = useRef(onSelect)
   const onViewChangeRef = useRef(onViewChange)
+  const onRequestGlobeRef = useRef(onRequestGlobe)
   const initialViewRef = useRef(initialView)
   const [ready, setReady] = useState(false)
   const [contextLost, setContextLost] = useState(false)
@@ -70,7 +72,7 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
   const areas = useMemo(() => signalAreasGeoJSON(signals), [signals])
   const tracks = useMemo(() => forecastTracks(signals), [signals])
 
-  useEffect(() => { signalsRef.current = signals; onSelectRef.current = onSelect; onViewChangeRef.current = onViewChange }, [onSelect, onViewChange, signals])
+  useEffect(() => { signalsRef.current = signals; onSelectRef.current = onSelect; onViewChangeRef.current = onViewChange; onRequestGlobeRef.current = onRequestGlobe }, [onRequestGlobe, onSelect, onViewChange, signals])
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -85,7 +87,6 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
       attributionControl: {},
     })
     mapRef.current = map
-    map.addControl(new NavigationControl({ showCompass: false }), 'bottom-right')
     map.once('load', () => {
       settled = true
       window.clearTimeout(timeout)
@@ -120,6 +121,7 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
     const commitView = () => {
       const center = map.getCenter()
       onViewChangeRef.current?.(clampGeographicView({ latitude: center.lat, longitude: center.lng, altitude: mapZoomToAltitude(map.getZoom()) }))
+      if (shouldReturnToGlobe(map.getZoom())) onRequestGlobeRef.current?.()
     }
     map.on('moveend', commitView)
     let resizeFrame = 0

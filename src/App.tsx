@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, Map, MonitorUp, Moon, RefreshCw, Satellite, Search, SunMedium, X } from 'lucide-react'
+import { Activity, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, MonitorUp, Moon, RefreshCw, Satellite, Search, SunMedium, X } from 'lucide-react'
 import { BottomNav, TopBar } from './components/Chrome'
 import { CasesPage, DiscoverPage, ObserverPage, SearchPanel, SurpriseButton } from './components/Pages'
 import SettingsPage, { type MapTheme, type PerformanceMode } from './components/SettingsPage'
@@ -9,7 +9,7 @@ import { ReplayControl } from './components/ReplayControl'
 import { AccessibleEarthFallback } from './components/AccessibleEarthFallback'
 import { filterVisibleSignals, useNexusStore } from './store/useNexusStore'
 import type { Discovery, Signal, SignalType } from './types/signal'
-import { DEFAULT_GEOGRAPHIC_VIEW, type GeographicView } from './lib/geography'
+import { clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, shouldEnterDetailedMap, type GeographicView } from './lib/geography'
 
 const GlobeView = lazy(() => import('./components/GlobeView'))
 const MapView = lazy(() => import('./components/MapView'))
@@ -77,6 +77,13 @@ export default function App() {
   const markGlobeReady = store.setGlobeReady
   const selectSignal = useCallback((signal: Signal) => selectSignalById(signal.id), [selectSignalById])
   const globeReady = useCallback(() => markGlobeReady(true), [markGlobeReady])
+  const handleGlobeViewChange = useCallback((view: GeographicView) => {
+    const next = clampGeographicView(view)
+    setGeographicView(next)
+    if (shouldEnterDetailedMap(next)) setVisualMode('map')
+  }, [])
+  const handleMapViewChange = useCallback((view: GeographicView) => setGeographicView(clampGeographicView(view)), [])
+  const returnToGlobe = useCallback(() => { if (webGLAvailable) setVisualMode('globe') }, [webGLAvailable])
 
   useEffect(() => {
     void store.initialize()
@@ -123,8 +130,8 @@ export default function App() {
 
   const earthContent = useMemo(() => (
     <>
-      {visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading geographic detail</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} mapTheme={mapTheme} initialView={geographicView} onViewChange={setGeographicView} onSelect={selectSignal}/></Suspense> : !webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={selectSignal}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
-        <GlobeView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} lightingMode={lightingMode} batterySaver={performanceMode === 'battery'} qualityMode={performanceMode} autoRotate={autoRotate} atmosphereEnabled={atmosphere} labelsEnabled={labels} initialView={geographicView} onViewChange={setGeographicView} onSelect={selectSignal} onReady={globeReady}/>
+      {visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading geographic detail</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} mapTheme={mapTheme} initialView={geographicView} onViewChange={handleMapViewChange} onRequestGlobe={returnToGlobe} onSelect={selectSignal}/></Suspense> : !webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={selectSignal}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
+        <GlobeView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} lightingMode={lightingMode} batterySaver={performanceMode === 'battery'} qualityMode={performanceMode} autoRotate={autoRotate} atmosphereEnabled={atmosphere} labelsEnabled={labels} initialView={geographicView} onViewChange={handleGlobeViewChange} onSelect={selectSignal} onReady={globeReady}/>
       </Suspense>} 
       <div className="earth-overlay">
         <button className={`world-pulse ${leadDiscovery ? `level-${leadDiscovery.level}` : ''}`} onClick={() => leadDiscovery && store.selectDiscovery(leadDiscovery.id)} disabled={!leadDiscovery}>
@@ -132,30 +139,15 @@ export default function App() {
           <strong>{leadDiscovery?.title ?? (store.isRefreshing ? 'Resolving current activity…' : 'No significant convergence detected')}</strong>
           <small>{leadDiscovery ? leadDiscovery.memory?.status === 'established' ? `${leadDiscovery.memory.deviationPercent! >= 0 ? '+' : ''}${leadDiscovery.memory.deviationPercent}% vs ${leadDiscovery.memory.observedDays}d regional baseline · score ${leadDiscovery.score}` : `${leadDiscovery.signalIds.length} evidence item${leadDiscovery.signalIds.length === 1 ? '' : 's'} · memory learning · score ${leadDiscovery.score}` : `${visibleSignals.length} qualifying signals · ${liveSourceCount} live sources`}</small>
         </button>
-        <div className="earth-command-rail" aria-label="Earth controls">
-          <button className={activePanel === 'search' ? 'active' : ''} onClick={() => setActivePanel(activePanel === 'search' ? undefined : 'search')}><Search/><span>Find</span></button>
-          <button className={activePanel === 'layers' ? 'active' : ''} onClick={() => setActivePanel(activePanel === 'layers' ? undefined : 'layers')}><Layers3/><span>Lens</span></button>
-          <button className={activePanel === 'time' ? 'active' : ''} onClick={() => setActivePanel(activePanel === 'time' ? undefined : 'time')}><Clock3/><span>{replayCutoff ? 'Replay' : store.timeWindow}</span></button>
-        </div>
-        {visualMode === 'globe' && <div className="globe-quick-lenses" aria-label="Globe appearance controls">
-          <div className="quick-lighting" role="group" aria-label="Earth lighting">
-            <button className={lightingMode === 'live' ? 'active' : ''} onClick={() => setLightingMode('live')} aria-pressed={lightingMode === 'live'}><Globe2/><span>Live</span></button>
-            <button className={lightingMode === 'day' ? 'active' : ''} onClick={() => setLightingMode('day')} aria-pressed={lightingMode === 'day'}><SunMedium/><span>Day</span></button>
-            <button className={lightingMode === 'night' ? 'active' : ''} onClick={() => setLightingMode('night')} aria-pressed={lightingMode === 'night'}><Moon/><span>Night</span></button>
-          </div>
-          <div className="quick-imagery" role="group" aria-label="Live environmental imagery">
-            <button className={radarEnabled ? 'active' : ''} onClick={() => setRadarEnabled((enabled) => !enabled)} aria-pressed={radarEnabled}><CloudRain/><span>Radar</span></button>
-            <button className={satelliteEnabled ? 'active' : ''} onClick={() => setSatelliteEnabled((enabled) => !enabled)} aria-pressed={satelliteEnabled}><Satellite/><span>Clouds</span></button>
-          </div>
-        </div>}
-        <div className="view-toggle"><button className={visualMode === 'globe' ? 'active' : ''} onClick={() => setVisualMode('globe')} aria-label={webGLAvailable ? 'Globe view' : 'Globe view unavailable on this device'} disabled={!webGLAvailable} title={webGLAvailable ? 'Globe view' : 'WebGL unavailable'}><Globe2/></button><button className={visualMode === 'map' ? 'active' : ''} onClick={() => setVisualMode('map')} aria-label="Map view"><Map/></button><button onClick={() => void store.refresh()} aria-label="Refresh sources"><RefreshCw className={store.isRefreshing ? 'spin' : ''}/></button></div>
+        <button className={`earth-tools-button ${activePanel ? 'active' : ''}`} onClick={() => setActivePanel(activePanel ? undefined : 'layers')} aria-expanded={Boolean(activePanel)} aria-label="Explore Earth controls"><Layers3/><span>Explore</span></button>
         {!webGLAvailable && <div className="compatibility-notice" role="status">Accessible signal mode · WebGL 2 unavailable</div>}
         <div className="earth-bottom"><SurpriseButton onClick={() => { const result = store.surprise(); if (!result) return; if ('signalIds' in result) { const discovery = result as Discovery; store.selectDiscovery(discovery.id) } else { store.selectSignal((result as Signal).id) } }}/></div>
       </div>
       {activePanel && <div className="command-scrim" onClick={() => setActivePanel(undefined)}>
         <section className="command-sheet" role="dialog" aria-modal="true" aria-label={`${activePanel} controls`} onClick={(event) => event.stopPropagation()}>
           <div className="sheet-handle"/>
-          <header><div><span className="eyebrow">EARTH COMMAND</span><h2>{activePanel === 'search' ? 'Find anywhere' : activePanel === 'layers' ? 'Earth lenses' : 'Time horizon'}</h2></div><button onClick={() => setActivePanel(undefined)} aria-label="Close controls"><X/></button></header>
+          <header><div><span className="eyebrow">EARTH COMMAND</span><h2>{activePanel === 'search' ? 'Find anywhere' : activePanel === 'layers' ? 'Earth lenses' : 'Time horizon'}</h2></div><div className="command-header-actions"><button onClick={() => void store.refresh()} aria-label="Refresh sources"><RefreshCw className={store.isRefreshing ? 'spin' : ''}/></button><button onClick={() => setActivePanel(undefined)} aria-label="Close controls"><X/></button></div></header>
+          <nav className="command-tabs" aria-label="Earth control sections"><button className={activePanel === 'search' ? 'active' : ''} onClick={() => setActivePanel('search')}><Search/>Find</button><button className={activePanel === 'layers' ? 'active' : ''} onClick={() => setActivePanel('layers')}><Layers3/>Layers</button><button className={activePanel === 'time' ? 'active' : ''} onClick={() => setActivePanel('time')}><Clock3/>Time</button></nav>
           {activePanel === 'search' && <><SearchPanel signals={store.signals} onSelect={(signal) => { store.selectSignal(signal.id); setActivePanel(undefined) }} onPlace={(place) => { store.observePlace(place); setActivePanel(undefined) }}/><p className="control-note">Places open directly in Observer. Current evidence remains traceable to its original source.</p></>}
           {activePanel === 'layers' && <>
             <div className="lens-presets" role="group" aria-label="Question-focused lenses">{lensPresets.map((lens) => <button key={lens.id} onClick={() => store.setLayers(lens.types)}><strong>{lens.label}</strong><small>{lens.description}</small></button>)}</div>
@@ -180,7 +172,7 @@ export default function App() {
       {selectedSignal && <SignalSheet signal={selectedSignal} onClose={() => store.selectSignal(undefined)}/>} 
       {replayCutoff && <button className="replay-indicator" onClick={() => { setReplayCutoff(undefined); setActivePanel('time') }}><span>REPLAY · {new Date(replayCutoff).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><strong>Return live</strong></button>}
     </>
-  ), [activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, geographicView, globeReady, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, performanceMode, radarEnabled, replayCutoff, satelliteEnabled, selectSignal, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable, windowSignals])
+  ), [activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, geographicView, globeReady, handleGlobeViewChange, handleMapViewChange, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, performanceMode, radarEnabled, replayCutoff, returnToGlobe, satelliteEnabled, selectSignal, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable, windowSignals])
 
   return (
     <div className={`app-shell ${ambientActive && ambientIdle ? 'ambient-idle' : ''}`}>
