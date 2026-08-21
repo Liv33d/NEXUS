@@ -150,7 +150,7 @@ export default function App() {
         <section className="command-sheet" role="dialog" aria-modal="true" aria-label={`${activePanel} controls`} onClick={(event) => event.stopPropagation()}>
           <div className="sheet-handle"/>
           <header><div><span className="eyebrow">EARTH COMMAND</span><h2>{activePanel === 'search' ? 'Find anywhere' : activePanel === 'layers' ? 'Earth lenses' : 'Time horizon'}</h2></div><button onClick={() => setActivePanel(undefined)} aria-label="Close controls"><X/></button></header>
-          {activePanel === 'search' && <><SearchPanel signals={store.signals} onSelect={(signal) => { store.selectSignal(signal.id); setActivePanel(undefined) }}/><p className="control-note">Search current evidence, source names, places, and recognized entities.</p></>}
+          {activePanel === 'search' && <><SearchPanel signals={store.signals} onSelect={(signal) => { store.selectSignal(signal.id); setActivePanel(undefined) }} onPlace={(place) => { store.observePlace(place); setActivePanel(undefined) }}/><p className="control-note">Places open directly in Observer. Current evidence remains traceable to its original source.</p></>}
           {activePanel === 'layers' && <>
             <div className="lens-presets" role="group" aria-label="Question-focused lenses">{lensPresets.map((lens) => <button key={lens.id} onClick={() => store.setLayers(lens.types)}><strong>{lens.label}</strong><small>{lens.description}</small></button>)}</div>
             <div className="lighting-control"><span>EARTH LIGHTING</span><div>
@@ -181,8 +181,8 @@ export default function App() {
       <TopBar offline={!online} demo={store.demoMode || store.signals.some((signal) => signal.source.freshness === 'demo')} onSettings={() => store.setView('settings')}/>
       {store.view === 'earth' && earthContent}
       {store.view === 'discover' && <DiscoverPage discoveries={store.discoveries} signals={store.signals} selectedId={store.selectedDiscoveryId} onOpen={(id) => store.selectDiscovery(id || undefined)} onSave={store.saveDiscovery} onNotes={store.updateCaseNotes} onRemove={async (id) => { await store.removeCase(id); store.selectDiscovery(undefined); store.setView('cases') }}/>} 
-      {store.view === 'cases' && <CasesPage discoveries={store.discoveries} onOpen={(id) => store.selectDiscovery(id)}/>} 
-      {store.view === 'observer' && <ObserverPage signals={store.signals}/>} 
+      {store.view === 'cases' && <CasesPage discoveries={store.discoveries} watches={store.watches} signals={store.signals} onOpen={(id) => store.selectDiscovery(id)} onObserve={store.observePlace} onUnwatch={store.unwatchPlace}/>} 
+      {store.view === 'observer' && <ObserverPage key={String(store.observerPlace?.id ?? 'observer')} signals={store.signals} initialPlace={store.observerPlace} watches={store.watches} onWatch={store.watchPlace} onUnwatch={store.unwatchPlace}/>} 
       {store.view === 'settings' && <SettingsPage layers={store.layerVisibility} statuses={store.statuses} demoMode={store.demoMode} firmsConfigured={store.firmsConfigured} performanceMode={performanceMode} autoRotate={autoRotate} atmosphere={atmosphere} labels={labels} mapTheme={mapTheme} onToggle={store.toggleLayer} onDemoMode={store.setDemoMode} onFirmsKey={store.setFirmsKey} onRefresh={store.refresh} onPerformance={setPerformanceMode} onAutoRotate={setAutoRotate} onAtmosphere={setAtmosphere} onLabels={setLabels} onMapTheme={setMapTheme} onErase={async () => { await store.eraseLocalData(); setRadarEnabled(false); setSatelliteEnabled(false); setLightingMode('live'); setPerformanceMode('automatic'); setAutoRotate(true); setAtmosphere(true); setLabels(true); setMapTheme('dark') }}/>} 
       {store.view !== 'settings' && <BottomNav view={store.view} onChange={store.setView}/>} 
       {store.view === 'settings' && <button className="settings-done" onClick={() => store.setView('earth')}>Done</button>}

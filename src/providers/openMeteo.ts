@@ -11,6 +11,13 @@ const weatherSchema = z.object({
 })
 
 const airSchema = z.object({ current: z.object({ time: z.string(), us_aqi: z.number().nullable(), pm2_5: z.number().nullable() }) })
+const marineSchema = z.object({
+  latitude: z.number(), longitude: z.number(),
+  current: z.object({
+    time: z.string(), wave_height: z.number().nullable(), wave_direction: z.number().nullable(), wave_period: z.number().nullable(),
+    sea_surface_temperature: z.number().nullable(), ocean_current_velocity: z.number().nullable(), ocean_current_direction: z.number().nullable(),
+  }),
+})
 const geocodingSchema = z.object({ results: z.array(z.object({
   id: z.number(), name: z.string(), latitude: z.number(), longitude: z.number(),
   country: z.string().optional(), country_code: z.string().optional(),
@@ -73,6 +80,7 @@ export interface ObserverPlace {
   latitude: number
   longitude: number
   timezone?: string
+  watching?: boolean
 }
 
 export async function searchObserverPlaces(query: string, signal?: AbortSignal): Promise<ObserverPlace[]> {
@@ -118,6 +126,18 @@ export interface ObserverContext {
   observedAt: number
 }
 
+export interface MarineContext {
+  waveHeight?: number
+  waveDirection?: number
+  wavePeriod?: number
+  seaSurfaceTemperature?: number
+  currentVelocity?: number
+  currentDirection?: number
+  gridLatitude: number
+  gridLongitude: number
+  observedAt: number
+}
+
 export async function fetchObserverContext(latitude: number, longitude: number, signal?: AbortSignal): Promise<ObserverContext> {
   const weatherParams = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude), current: 'temperature_2m,apparent_temperature,precipitation,weather_code,cloud_cover,surface_pressure,wind_speed_10m,wind_direction_10m', daily: 'sunrise,sunset', timezone: 'auto', forecast_days: '1' })
   const airParams = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude), current: 'us_aqi,pm2_5', timezone: 'auto' })
@@ -143,6 +163,30 @@ export async function fetchObserverContext(latitude: number, longitude: number, 
     aqi: air?.success ? air.data.current.us_aqi ?? undefined : undefined,
     pm25: air?.success ? air.data.current.pm2_5 ?? undefined : undefined,
     observedAt: Date.parse(weather.current.time),
+  }
+}
+
+export async function fetchMarineContext(latitude: number, longitude: number, signal?: AbortSignal): Promise<MarineContext | undefined> {
+  const params = new URLSearchParams({
+    latitude: String(latitude), longitude: String(longitude),
+    current: 'wave_height,wave_direction,wave_period,sea_surface_temperature,ocean_current_velocity,ocean_current_direction',
+    cell_selection: 'sea', timezone: 'GMT', forecast_days: '1',
+  })
+  const response = await fetchWithTimeout(`https://marine-api.open-meteo.com/v1/marine?${params}`, { signal }, 8000)
+  if (!response.ok) throw providerHttpError(response, 'open-meteo-marine')
+  const value = marineSchema.parse(await response.json())
+  const current = value.current
+  if ([current.wave_height, current.sea_surface_temperature, current.ocean_current_velocity].every((item) => item === null)) return undefined
+  return {
+    waveHeight: current.wave_height ?? undefined,
+    waveDirection: current.wave_direction ?? undefined,
+    wavePeriod: current.wave_period ?? undefined,
+    seaSurfaceTemperature: current.sea_surface_temperature ?? undefined,
+    currentVelocity: current.ocean_current_velocity ?? undefined,
+    currentDirection: current.ocean_current_direction ?? undefined,
+    gridLatitude: value.latitude,
+    gridLongitude: value.longitude,
+    observedAt: Date.parse(`${current.time}Z`),
   }
 }
 

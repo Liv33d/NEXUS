@@ -88,7 +88,7 @@ NEXUS builds to static files in `dist/`. The included `Deploy NEXUS` workflow pu
 - FIRMS requires the user to enter a free NASA MAP key locally; it is never committed or bundled.
 - Moving-track reconstruction and high-frequency geostationary satellite animation remain sequenced work; global replay currently replays stored evidence timestamps.
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for sequenced expansion and [`docs/RESEARCH.md`](docs/RESEARCH.md) for open-source research and license notes.
+See [`docs/EVOLUTION.md`](docs/EVOLUTION.md) for current build/defer/experiment/reject decisions, [`docs/ROADMAP.md`](docs/ROADMAP.md) for sequenced expansion, and [`docs/RESEARCH.md`](docs/RESEARCH.md) for open-source research and license notes.
 
 ## License
 

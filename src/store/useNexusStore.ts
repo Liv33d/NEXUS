@@ -5,6 +5,9 @@ import { demoProvider } from '../providers/demo'
 import { liveProviders } from '../providers/registry'
 import { runProvider } from '../providers/runtime'
 import { ProviderError } from '../providers/types'
+import type { ObserverPlace } from '../providers/openMeteo'
+import { createPlaceWatch, placeWatchId } from '../lib/watch'
+import type { WatchRule } from '../types/watch'
 import type { Discovery, ProviderStatus, Signal, SignalType } from '../types/signal'
 
 export type ViewId = 'earth' | 'discover' | 'cases' | 'observer' | 'settings'
@@ -23,8 +26,13 @@ interface NexusState {
   isRefreshing: boolean
   lastRefreshed?: number
   firmsConfigured: boolean
+  observerPlace?: ObserverPlace
+  watches: WatchRule[]
   layerVisibility: Record<SignalType, boolean>
   setView(view: ViewId): void
+  observePlace(place: ObserverPlace): void
+  watchPlace(place: ObserverPlace): Promise<void>
+  unwatchPlace(latitude: number, longitude: number): Promise<void>
   setTimeWindow(window: TimeWindow): void
   selectSignal(id?: string): void
   selectDiscovery(id?: string): void
@@ -72,8 +80,21 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   globeReady: false,
   isRefreshing: false,
   firmsConfigured: false,
+  observerPlace: undefined,
+  watches: [],
   layerVisibility: { earthquake: true, fire: true, weather: true, aircraft: true, satellite: true, 'space-weather': true, media: true, environment: true, infrastructure: true },
   setView: (view) => set({ view, selectedSignalId: undefined, selectedDiscoveryId: undefined }),
+  observePlace: (observerPlace) => set({ observerPlace, view: 'observer', selectedSignalId: undefined, selectedDiscoveryId: undefined }),
+  watchPlace: async (place) => {
+    const watch = createPlaceWatch(place)
+    try { await db.watches.put(watch) } catch { /* Keep this-session watch when storage is unavailable. */ }
+    set((state) => ({ watches: [watch, ...state.watches.filter((item) => item.id !== watch.id)] }))
+  },
+  unwatchPlace: async (latitude, longitude) => {
+    const id = placeWatchId(latitude, longitude)
+    try { await db.watches.delete(id) } catch { /* Remove from memory even if storage is unavailable. */ }
+    set((state) => ({ watches: state.watches.filter((watch) => watch.id !== id) }))
+  },
   setTimeWindow: (timeWindow) => { set({ timeWindow }); void get().refresh() },
   selectSignal: (selectedSignalId) => set({ selectedSignalId }),
   selectDiscovery: (selectedDiscoveryId) => set({ selectedDiscoveryId, view: selectedDiscoveryId ? 'discover' : get().view }),
@@ -106,19 +127,20 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   initialize: async () => {
     try {
       await pruneDatabase()
-      const [cached, storedStatuses, layerSetting, demoSetting, firmsSetting] = await Promise.all([
+      const [cached, storedStatuses, layerSetting, demoSetting, firmsSetting, watches] = await Promise.all([
         db.signals.orderBy('timestamp').reverse().limit(3000).toArray(),
         db.providerStatus.toArray(),
         db.settings.get('layers'),
         db.settings.get('demoMode'),
         db.settings.get('firmsMapKey'),
+        db.watches.toArray(),
       ])
       const statuses = { ...get().statuses, ...Object.fromEntries(storedStatuses.map((status) => [status.providerId, status])) }
       const layerVisibility = layerSetting?.value && typeof layerSetting.value === 'object' ? { ...get().layerVisibility, ...layerSetting.value as Partial<Record<SignalType, boolean>> } : get().layerVisibility
       const demoMode = demoSetting?.value === true
       const firmsConfigured = typeof firmsSetting?.value === 'string' && firmsSetting.value.length > 0
-      if (cached.length) set({ signals: cached.map(cachedCopy), discoveries: await deriveWithSaved(cached), statuses, layerVisibility, demoMode, firmsConfigured })
-      else set({ statuses, layerVisibility, demoMode, firmsConfigured })
+      if (cached.length) set({ signals: cached.map(cachedCopy), discoveries: await deriveWithSaved(cached), statuses, layerVisibility, demoMode, firmsConfigured, watches })
+      else set({ statuses, layerVisibility, demoMode, firmsConfigured, watches })
     } catch {
       // Safari private browsing and low-storage conditions can disable IndexedDB.
       // NEXUS remains useful as a live, memory-only experience.
@@ -198,7 +220,7 @@ export const useNexusStore = create<NexusState>((set, get) => ({
     } catch { /* Private browsing may deny localStorage access. */ }
     recentSurprises.length = 0
     set({
-      signals: [], discoveries: [], selectedSignalId: undefined, selectedDiscoveryId: undefined,
+      signals: [], discoveries: [], watches: [], observerPlace: undefined, selectedSignalId: undefined, selectedDiscoveryId: undefined,
       demoMode: false, firmsConfigured: false, isRefreshing: false, lastRefreshed: undefined,
       statuses: Object.fromEntries(liveProviders.map((provider) => [provider.id, { providerId: provider.id, providerName: provider.name, state: 'idle' }])),
     })

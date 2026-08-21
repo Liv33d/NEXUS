@@ -53,7 +53,7 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /^https:\/\/(api|air-quality-api)\.open-meteo\.com\//,
+            urlPattern: /^https:\/\/(api|air-quality-api|marine-api|geocoding-api)\.open-meteo\.com\//,
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'nexus-observer-context',
