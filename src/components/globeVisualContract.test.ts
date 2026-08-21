@@ -34,4 +34,9 @@ describe('globe visual stability contract', () => {
     expect(styles).toContain('grid-template-rows:repeat(2,72px)')
     expect(app).toContain('<details className="advanced-layers">')
   })
+
+  it('never starts a WebGL map when WebGL2 is unavailable', () => {
+    expect(app).toMatch(/\{!webGLAvailable \? <AccessibleEarthFallback[\s\S]+: visualMode === 'map' \? <Suspense/)
+    expect(app).not.toMatch(/\{visualMode === 'map' \?[\s\S]+: !webGLAvailable \? <AccessibleEarthFallback/)
+  })
 })
