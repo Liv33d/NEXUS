@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createPlaceWatch, evaluateWatch, evaluateWatchTriggers, placeWatchId } from './watch'
+import { createPlaceWatch, evaluateWatch, evaluateWatchTriggers, evaluateWeatherWatch, placeWatchId } from './watch'
 import type { Signal } from '../types/signal'
 
 const signal = (id: string, latitude: number, longitude: number, severity: number): Signal => ({
@@ -12,7 +12,7 @@ describe('local watch engine', () => {
   it('uses stable place IDs and transparent default conditions', () => {
     const watch = createPlaceWatch({ id: 1, name: 'Caguas', subtitle: 'Puerto Rico', latitude: 18.2388, longitude: -66.0352 }, 100)
     expect(watch.id).toBe(placeWatchId(18.2388, -66.0352))
-    expect(watch.conditions).toEqual({ radiusKm: 250, minimumSeverity: 55, cooldownMs: 900000, dedupeWindowMs: 86400000 })
+    expect(watch.conditions).toEqual({ radiusKm: 250, minimumSeverity: 55, cooldownMs: 900000, dedupeWindowMs: 86400000, weather: { severeAlerts: true, precipitationProbabilityAtLeast: 70, windSpeedAtLeastKmh: 60 } })
     expect(watch.delivery).toBe('in-app')
   })
 
@@ -31,5 +31,15 @@ describe('local watch engine', () => {
     expect(repeated).toHaveLength(1)
     expect(repeated[0]?.id).toBe(first[0]?.id)
     expect(repeated[0]?.lastSeenAt).toBe(1_100_000)
+  })
+
+  it('evaluates forecast thresholds separately from provider delivery logic', () => {
+    const watch = createPlaceWatch({ id: 1, name: 'Caguas', subtitle: 'Puerto Rico', latitude: 18.2388, longitude: -66.0352 })
+    const context = {
+      temperature: 29, apparentTemperature: 32, precipitation: 0, weatherCode: 2, cloudCover: 40, pressure: 1010,
+      windSpeed: 20, windDirection: 80, sunrise: '2026-08-21T06:00', sunset: '2026-08-21T18:50', timezone: 'America/Puerto_Rico',
+      observedAt: 1, retrievedAt: 2, daily5: [], hourly24: [{ timestamp: 3, localTime: '2026-08-21T15:00', temperature: 30, weatherCode: 80, precipitationProbability: 82, windSpeed: 22 }],
+    }
+    expect(evaluateWeatherWatch(watch, context, [], 400).reasons).toContain('82% precipitation forecast')
   })
 })

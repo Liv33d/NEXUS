@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { dedupeLocationLabel, displayTemperature, displayWindSpeed, fetchMarineContext, formatObserverWallTime, observerPlaceSubtitle, parseObserverPlaceQuery } from './openMeteo'
+import { dedupeLocationLabel, displayPrecipitation, displayPressure, displayTemperature, displayVisibility, displayWindSpeed, fetchMarineContext, fetchObserverContext, formatObserverWallTime, observerPlaceSubtitle, parseObserverPlaceQuery } from './openMeteo'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -23,11 +23,35 @@ describe('Observer display units and local time', () => {
     expect(displayTemperature(20, 'fahrenheit')).toBe(68)
     expect(displayTemperature(20, 'celsius')).toBe(20)
     expect(displayWindSpeed(16.09344, 'fahrenheit')).toBeCloseTo(10, 2)
+    expect(displayPrecipitation(25.4, 'fahrenheit')).toBeCloseTo(1, 4)
+    expect(displayVisibility(1609.344, 'fahrenheit')).toBeCloseTo(1, 4)
+    expect(displayPressure(1013.25, 'fahrenheit')).toBeCloseTo(29.92, 2)
   })
 
   it('preserves the observed location wall time', () => {
     expect(formatObserverWallTime('2026-08-16T06:14', 'en-US')).toBe('6:14 AM')
     expect(formatObserverWallTime('2026-08-16T18:42', 'en-US')).toBe('6:42 PM')
+  })
+})
+
+describe('Observer forecast normalization', () => {
+  it('keeps model forecast and current-condition timestamps explicit', async () => {
+    const hourlyTimes = Array.from({ length: 30 }, (_, index) => `2026-08-21T${String(index % 24).padStart(2, '0')}:00`)
+    const values = Array.from({ length: 30 }, (_, index) => 25 + index / 10)
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        latitude: 18.24, longitude: -66.04, timezone: 'America/Puerto_Rico', utc_offset_seconds: -14400,
+        current: { time: '2026-08-21T10:00', temperature_2m: 29, apparent_temperature: 33, precipitation: 0.2, weather_code: 2, cloud_cover: 44, surface_pressure: 1009, wind_speed_10m: 18, wind_direction_10m: 84, relative_humidity_2m: 74, visibility: 16000, is_day: 1 },
+        hourly: { time: hourlyTimes, temperature_2m: values, apparent_temperature: values, precipitation_probability: values.map(() => 20), precipitation: values.map(() => 0), rain: values.map(() => 0), snowfall: values.map(() => 0), weather_code: values.map(() => 2), cloud_cover: values.map(() => 40), wind_speed_10m: values.map(() => 15), wind_direction_10m: values.map(() => 80) },
+        daily: { time: ['2026-08-21','2026-08-22','2026-08-23','2026-08-24','2026-08-25','2026-08-26'], sunrise: Array(6).fill('2026-08-21T06:05'), sunset: Array(6).fill('2026-08-21T18:50'), weather_code: Array(6).fill(2), temperature_2m_max: Array(6).fill(31), temperature_2m_min: Array(6).fill(24), precipitation_probability_max: Array(6).fill(35), precipitation_sum: Array(6).fill(2.2), wind_speed_10m_max: Array(6).fill(24) },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ current: { time: '2026-08-21T10:00', us_aqi: 31, pm2_5: 7 } }), { status: 200 }))
+    const context = await fetchObserverContext(18.24, -66.04)
+    expect(context.hourly24).toHaveLength(14)
+    expect(context.daily5).toHaveLength(5)
+    expect(context.relativeHumidity).toBe(74)
+    expect(context.visibility).toBe(16000)
+    expect(context.observedAt).toBe(Date.parse('2026-08-21T14:00:00Z'))
   })
 })
 

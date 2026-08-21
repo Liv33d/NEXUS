@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
 import { Mesh, MeshBasicMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, TextureLoader, Vector2 } from 'three'
-import { noaaGeoColorImage, noaaRadarImage } from '../lib/mapLayers'
+import { environmentalLayerStamp, nasaObservedCloudImage, noaaRadarImage } from '../lib/mapLayers'
 import { subsolarPoint } from '../lib/solar'
 import { GLOBE_CITIES, type GlobeCity } from '../data/cities'
 import type { Signal } from '../types/signal'
@@ -109,6 +109,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
   const onReadyRef = useRef(onReady)
   const onViewChangeRef = useRef(onViewChange)
   const onRequestSolarRef = useRef(onRequestSolar)
+  const solarArmRef = useRef({ armedUntil: 0, timer: 0 })
   const [size, setSize] = useState({ width: Math.max(1, window.innerWidth), height: Math.max(1, window.innerHeight) })
   const [ready, setReady] = useState(false)
   const [contextLost, setContextLost] = useState(false)
@@ -116,6 +117,8 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
   const [countries, setCountries] = useState<Array<Feature<Polygon | MultiPolygon>>>([])
   const [radarStatus, setRadarStatus] = useState<'loading' | 'live' | 'error'>('loading')
   const [satelliteStatus, setSatelliteStatus] = useState<'loading' | 'live' | 'error'>('loading')
+  const [solarArmed, setSolarArmed] = useState(false)
+  const [layerReference, setLayerReference] = useState(Date.now)
   const earthMaterial = useMemo(createEarthMaterial, [])
   const labels = useMemo(() => cityLabelsForView(viewpoint), [viewpoint])
   const points = useMemo(() => signals.filter((signal) => signal.location).slice(0, batterySaver ? 350 : 1200), [signals, batterySaver])
@@ -129,6 +132,14 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
     const path = value.filter((item): item is [number, number] => Array.isArray(item) && item.length >= 2 && typeof item[0] === 'number' && typeof item[1] === 'number')
     return path.length >= 2 ? [{ signal, points: path.map(([lng, lat]) => ({ lat, lng })) }] : []
   }), [signals])
+
+  useEffect(() => {
+    if (!radarEnabled && !satelliteEnabled) return
+    const refresh = () => { if (document.visibilityState === 'visible') setLayerReference(Date.now()) }
+    refresh()
+    const timer = window.setInterval(refresh, 5 * 60_000)
+    return () => window.clearInterval(timer)
+  }, [radarEnabled, satelliteEnabled])
 
   useEffect(() => { onReadyRef.current = onReady; onViewChangeRef.current = onViewChange; onRequestSolarRef.current = onRequestSolar }, [onReady, onRequestSolar, onViewChange])
 
@@ -232,11 +243,30 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
         return geographicViewsDiffer(normalized, next) ? { lat: next.latitude, lng: next.longitude, altitude: next.altitude } : current
       })
       onViewChangeRef.current?.(next)
-      if (point.altitude >= 3.18) onRequestSolarRef.current?.()
+      if (point.altitude < 2.9) {
+        solarArmRef.current.armedUntil = 0
+        window.clearTimeout(solarArmRef.current.timer)
+        setSolarArmed(false)
+      } else if (point.altitude >= 3.18) {
+        const now = Date.now()
+        if (solarArmRef.current.armedUntil >= now) {
+          solarArmRef.current.armedUntil = 0
+          window.clearTimeout(solarArmRef.current.timer)
+          setSolarArmed(false)
+          onRequestSolarRef.current?.()
+        } else {
+          solarArmRef.current.armedUntil = now + 4200
+          setSolarArmed(true)
+          window.clearTimeout(solarArmRef.current.timer)
+          solarArmRef.current.timer = window.setTimeout(() => setSolarArmed(false), 4200)
+        }
+      }
     }
     controls.addEventListener('end', commitView)
     return () => controls.removeEventListener('end', commitView)
   }, [ready])
+
+  useEffect(() => () => window.clearTimeout(solarArmRef.current.timer), [])
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -281,13 +311,11 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
     let cancelled = false
     let mesh: Mesh | undefined
     setSatelliteStatus('loading')
-    const texture = new TextureLoader().setCrossOrigin('anonymous').load(noaaGeoColorImage(), (loaded) => {
+    const texture = new TextureLoader().setCrossOrigin('anonymous').load(nasaObservedCloudImage(layerReference), (loaded) => {
       if (cancelled) { loaded.dispose(); return }
       loaded.colorSpace = SRGBColorSpace
-      // NOAA's combined GOES GeoColor frame contains black/no-data pixels and
-      // hard sector edges. A direct raster material projects those gaps as dark
-      // wedges across Earth. This shader discards no-data, suppresses coloured
-      // land/ocean content, and retains only bright, low-chroma cloud structure.
+      // Daily GIBS true-colour is globally registered. The shader suppresses
+      // land/ocean content and retains bright, low-chroma observed cloud.
       const material = new ShaderMaterial({
         uniforms: { cloudTexture: { value: loaded }, opacity: { value: 0.48 } },
         vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
@@ -305,7 +333,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       if (mesh) { globe.scene().remove(mesh); mesh.geometry.dispose(); (mesh.material as ShaderMaterial).dispose() }
       texture.dispose()
     }
-  }, [batterySaver, ready, satelliteEnabled])
+  }, [batterySaver, layerReference, ready, satelliteEnabled])
 
   return <div ref={hostRef} className="globe-stage" role="img" aria-label={`Interactive Earth showing ${points.length} visible signals`}>
     <Globe
@@ -352,11 +380,11 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       }}
     />
     <div className="environment-status-stack">
-      {satelliteEnabled && <div className={`radar-provenance satellite ${satelliteStatus}`}><i/><span>{batterySaver ? 'SATELLITE PAUSED' : satelliteStatus === 'live' ? 'NOAA GEOCOLOR · LATEST' : satelliteStatus === 'error' ? 'SATELLITE UNAVAILABLE' : 'ACQUIRING SATELLITE'}</span></div>}
-      {radarEnabled && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED' : radarStatus === 'live' ? 'NOAA RADAR · 5 MIN' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
+      {satelliteEnabled && <div className={`radar-provenance satellite ${satelliteStatus}`}><i/><span>{batterySaver ? 'CLOUDS PAUSED' : satelliteStatus === 'live' ? `NASA VIIRS CLOUDS · OBSERVED ${environmentalLayerStamp('satellite', layerReference).ageMinutes < 60 ? `${environmentalLayerStamp('satellite', layerReference).ageMinutes}M AGO` : `${Math.floor(environmentalLayerStamp('satellite', layerReference).ageMinutes / 60)}H AGO`}` : satelliteStatus === 'error' ? 'CLOUD IMAGERY UNAVAILABLE' : 'ACQUIRING OBSERVED CLOUDS'}</span></div>}
+      {radarEnabled && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED' : radarStatus === 'live' ? `NOAA MRMS · RETRIEVED ${environmentalLayerStamp('radar', layerReference).ageMinutes}M AGO · US` : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
       {migration && <div className={`radar-provenance migration ${migration.freshness}`}><i/><span>GBIF BIRDS · {migration.freshness === 'cached' ? 'CACHED' : 'DERIVED 14D SHIFT'}</span></div>}
     </div>
-    {viewpoint.altitude > 2.35 && <div className="space-transition-cue">CONTINUE OUTWARD · SOLAR SYSTEM</div>}
+    {viewpoint.altitude > 2.35 && <div className={`space-transition-cue ${solarArmed ? 'armed' : ''}`}>{solarArmed ? 'PINCH OUT ONCE MORE · LEAVE EARTH' : 'CONTINUE OUTWARD · ORBIT'}</div>}
     {contextLost && <div className="map-loading renderer-recovery"><span/><strong>Restoring Earth</strong><small>Graphics context was interrupted</small></div>}
     <div className="globe-vignette" />
   </div>

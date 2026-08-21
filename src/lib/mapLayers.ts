@@ -136,6 +136,38 @@ export function nasaTrueColorTiles(reference = Date.now()) {
   return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${previousUtcDate(reference)}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`
 }
 
+/**
+ * Global daily observed true-colour imagery for extracting a cloud layer on
+ * the sphere. GIBS provides a complete equirectangular image, avoiding the
+ * hard GOES sector/no-data wedges that previously crossed the globe.
+ */
+export function nasaObservedCloudImage(reference = Date.now(), width = 2048, height = 1024) {
+  const params = new URLSearchParams({
+    service: 'WMS', request: 'GetMap', version: '1.1.1',
+    layers: 'VIIRS_SNPP_CorrectedReflectance_TrueColor', styles: '', format: 'image/jpeg', transparent: 'false',
+    width: String(Math.min(4096, Math.max(256, width))), height: String(Math.min(2048, Math.max(128, height))),
+    srs: 'EPSG:4326', bbox: '-180,-90,180,90', time: previousUtcDate(reference),
+  })
+  return `https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?${params}`
+}
+
+export interface EnvironmentalLayerStamp {
+  timestamp: number
+  kind: 'observed' | 'retrieved'
+  ageMinutes: number
+}
+
+export function environmentalLayerStamp(layer: 'radar' | 'satellite', reference = Date.now()): EnvironmentalLayerStamp {
+  if (layer === 'satellite') {
+    const timestamp = Date.parse(`${previousUtcDate(reference)}T23:59:59Z`)
+    return { timestamp, kind: 'observed', ageMinutes: Math.max(0, Math.floor((reference - timestamp) / 60_000)) }
+  }
+  // NOAA's public MRMS MapServer is current but explicitly not time-enabled.
+  // We can truthfully expose retrieval freshness, not invent an observation time.
+  const timestamp = Math.floor(reference / (5 * 60_000)) * 5 * 60_000
+  return { timestamp, kind: 'retrieved', ageMinutes: Math.max(0, Math.floor((reference - timestamp) / 60_000)) }
+}
+
 export const environmentalLayers = {
   radar: {
     label: 'NOAA/NWS MRMS base reflectivity',
@@ -144,9 +176,9 @@ export const environmentalLayers = {
     attribution: 'Radar: NOAA/NWS MRMS',
   },
   satellite: {
-    label: 'NOAA NESDIS merged GOES GeoColor',
-    freshness: 'Latest operational image; normally refreshed every 10–15 minutes',
-    coverage: 'GOES East and West domains, approximately 76°S to 76°N',
-    attribution: 'Imagery: NOAA/NESDIS/STAR',
+    label: 'NASA GIBS VIIRS observed true colour',
+    freshness: 'Previous completed UTC day; observational imagery, not a forecast',
+    coverage: 'Global daily composite',
+    attribution: 'Imagery: NASA EOSDIS GIBS / VIIRS',
   },
 } as const

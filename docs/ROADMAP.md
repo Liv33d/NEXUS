@@ -10,8 +10,8 @@
 - Open‑Meteo Observer weather, air-quality, and daylight context
 - Provider retry/deduplication, cached fallback, and health control surface
 - NASA-textured globe and lazy MapLibre investigation map with clustering, alert polygons, and accessible no-WebGL fallback
-- Best-effort RainViewer radar frames with official NOAA/NWS U.S. fallback and a bundled Natural Earth offline map fallback
-- User-controlled recent radar animation with reduced-motion and visibility safeguards
+- Official NOAA/NWS MRMS regional radar with explicit retrieval freshness and a bundled Natural Earth offline map fallback
+- Observer current conditions, coherent metric/U.S. unit conversion, 24-hour forecast, five-day outlook, and explainable local weather Watch thresholds
 - Global GDACS impact alerts for cyclones, floods, volcanoes, droughts, and wildfires
 - Preserved, bounded NWS alert geometry and auditable investigation source lists
 - Bounded spatial-time candidate generation for mobile-safe correlation
@@ -22,10 +22,10 @@
 
 ## Next
 
-1. Build the federated Camera Registry, health checker, clustering, and consent-aware Portal experience.
-2. Add USGS volcano/HVO camera, NOAA buoy/BuoyCAM, NHC cyclone, and USGS water providers.
+1. Add timestamp- and footprint-aware GOES/Himawari regional cloud imagery without reintroducing sphere seams.
+2. Evaluate a commercially sustainable global radar source; keep official NOAA MRMS as the no-key regional baseline.
 3. Build transparent per-H3 temporal baselines, component scores, and “What changed?” explanations.
-4. Add timestamp- and footprint-aware GOES/Himawari geostationary imagery.
+4. Build the federated Camera Registry, health checker, clustering, and consent-aware Portal experience.
 5. Move FIRMS normalization and candidate generation into Web Workers before adding dense sources.
 6. Add IODA outage, Launch Library 2, selected CelesTrak orbit, and bounded aviation-weather modules.
 7. Add focused entity graph with bounded progressive expansion.

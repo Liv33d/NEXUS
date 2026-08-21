@@ -1,6 +1,7 @@
 import type { ObserverPlace } from '../providers/openMeteo'
+import type { ObserverContext } from '../providers/openMeteo'
 import type { Signal } from '../types/signal'
-import type { WatchMatch, WatchRule, WatchTrigger } from '../types/watch'
+import type { WatchMatch, WatchRule, WatchTrigger, WatchWeatherMatch } from '../types/watch'
 import { distanceKm } from './geo'
 
 export function placeWatchId(latitude: number, longitude: number): string {
@@ -13,9 +14,30 @@ export function createPlaceWatch(place: ObserverPlace, now = Date.now()): WatchR
     createdAt: now,
     enabled: true,
     target: { kind: 'place', name: [place.name, place.subtitle].filter(Boolean).join(', '), latitude: place.latitude, longitude: place.longitude },
-    conditions: { radiusKm: 250, minimumSeverity: 55, cooldownMs: 15 * 60000, dedupeWindowMs: 24 * 3600000 },
+    conditions: {
+      radiusKm: 250, minimumSeverity: 55, cooldownMs: 15 * 60000, dedupeWindowMs: 24 * 3600000,
+      weather: { severeAlerts: true, precipitationProbabilityAtLeast: 70, windSpeedAtLeastKmh: 60 },
+    },
     delivery: 'in-app',
   }
+}
+
+export function evaluateWeatherWatch(rule: WatchRule, context: ObserverContext | undefined, signals: Signal[], now = Date.now()): WatchWeatherMatch {
+  const weather = rule.conditions.weather
+  if (!rule.enabled || !weather) return { ruleId: rule.id, evaluatedAt: now, active: false, reasons: [] }
+  const reasons: string[] = []
+  if (weather.severeAlerts && signals.some((signal) => signal.type === 'weather' && signal.location && (signal.severity ?? 0) >= rule.conditions.minimumSeverity && distanceKm(rule.target, signal.location) <= rule.conditions.radiusKm)) reasons.push('Severe weather alert nearby')
+  if (context) {
+    const precipitationPeak = Math.max(0, ...context.hourly24.map((point) => point.precipitationProbability ?? 0))
+    const windPeak = Math.max(context.windSpeed, ...context.hourly24.map((point) => point.windSpeed ?? 0))
+    const temperaturePeak = Math.max(context.temperature, ...context.hourly24.map((point) => point.temperature))
+    const temperatureLow = Math.min(context.temperature, ...context.hourly24.map((point) => point.temperature))
+    if (weather.precipitationProbabilityAtLeast !== undefined && precipitationPeak >= weather.precipitationProbabilityAtLeast) reasons.push(`${Math.round(precipitationPeak)}% precipitation forecast`)
+    if (weather.windSpeedAtLeastKmh !== undefined && windPeak >= weather.windSpeedAtLeastKmh) reasons.push(`${Math.round(windPeak)} km/h wind forecast`)
+    if (weather.temperatureAboveC !== undefined && temperaturePeak >= weather.temperatureAboveC) reasons.push(`${Math.round(temperaturePeak)}°C heat threshold`)
+    if (weather.temperatureBelowC !== undefined && temperatureLow <= weather.temperatureBelowC) reasons.push(`${Math.round(temperatureLow)}°C cold threshold`)
+  }
+  return { ruleId: rule.id, evaluatedAt: now, active: reasons.length > 0, reasons }
 }
 
 export function evaluateWatchTriggers(rule: WatchRule, signals: Signal[], previous: WatchTrigger[], now = Date.now()): WatchTrigger[] {

@@ -49,9 +49,10 @@
 
 ## Open‑Meteo
 
-- Use: on-demand Observer Mode weather, air-quality, geocoding, and nearby marine context only—not ordinary-weather map noise.
+- Use: on-demand Observer current conditions, 24-hour hourly forecast, five-day outlook, air quality, geocoding, and nearby marine context—not ordinary-weather map noise.
 - Authentication: none for the documented non-commercial tier.
-- Captured: current temperature, apparent temperature, precipitation, cloud, wind, pressure, weather code, sunrise/sunset, U.S. AQI, and PM2.5.
+- Captured: current temperature, apparent temperature, precipitation, cloud, humidity, visibility, wind, pressure, weather code, sunrise/sunset, U.S. AQI, PM2.5, hourly forecast variables, and daily high/low/precipitation/wind summaries.
+- Semantics: the provider's current grid value is shown separately from all model-forecast values. Location-local timestamps are normalized with the provider's UTC offset rather than the viewing device timezone.
 - Marine context: wave height/direction/period, sea-surface temperature, and ocean-current velocity/direction from the nearest sea grid when that grid is within 150 km. These are labeled modeled and explicitly not suitable for navigation.
 - Commercial note: the public no-key endpoint is documented for non-commercial use. A commercial NEXUS release must self-host the AGPL server where compatible or use Open-Meteo's commercial customer endpoint.
 
@@ -104,13 +105,13 @@
 - Freshness: the upstream mosaic is normally updated about every five minutes. The current service is not time-enabled, and NEXUS does not imply historical playback.
 - Storage: short-lived transparent exports are cached for resilience. Detail Map requests EPSG:3857 tiles so imagery stays geographically registered; the globe uses the bounded geographic export.
 
-## RainViewer global radar
+## RainViewer global radar — researched, not active
 
 - Endpoint: public Weather Maps timeline and radar tile API.
 - Authentication: none.
 - Coverage: best-effort composite coverage from more than 1,200 radars across 150+ countries; gaps remain possible.
-- Freshness: the latest published frame, normally refreshed every 5–10 minutes, is used only in connected Detail Map mode.
-- Terms: personal, educational, and small-community use with mandatory attribution; no SLA. This is an enhancement rather than a core dependency, and NOAA MRMS remains the automatic fallback.
+- Terms: personal, educational, and small-community use with mandatory attribution; no SLA and not intended for high-volume commercial applications.
+- Decision: removed from the active product path. A future commercial NEXUS cannot quietly depend on these terms. NOAA MRMS remains the honest official regional radar layer while a sustainable global provider is evaluated.
 
 ## OpenFreeMap basemap
 
@@ -121,11 +122,11 @@
 
 ## NASA EOSDIS GIBS imagery
 
-- Endpoint: official EPSG:3857 WMTS corrected-reflectance true-color imagery.
+- Endpoint: official EPSG:3857 WMTS and EPSG:4326 WMS corrected-reflectance true-color imagery.
 - Authentication: none for the selected layer.
 - Coverage: global where MODIS Terra observations are available.
 - Freshness: NEXUS requests the previous completed UTC day to avoid showing partially populated global imagery and labels it delayed.
-- Semantics: this is visual observation context, not a weather forecast and not a discrete Signal.
+- Semantics: this is visual observation context, not a weather forecast and not a discrete Signal. The globe extracts cloud-like high-luminance structure from a globally registered daily composite; its age is visible and it is never called live.
 
 ## NOAA/NESDIS merged GOES GeoColor
 

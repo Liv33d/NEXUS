@@ -21,7 +21,8 @@ describe('mobile interaction layout contract', () => {
   it('uses an intentional landscape inspector instead of stacking portrait sheets', () => {
     expect(styles).toContain('@media (orientation: landscape) and (max-height: 600px)')
     expect(styles).toMatch(/\.command-sheet \{ top:calc\(54px[^}]+left:auto[^}]+width:min\(390px,46vw\)/)
-    expect(styles).toMatch(/\.observer-dashboard \{ display:grid;grid-template-columns:minmax\(250px,.84fr\) minmax\(330px,1.16fr\)/)
+    expect(styles).toMatch(/\.observer-dashboard \{ display:grid;grid-template-columns:minmax\(250px,.84fr\) minmax\(360px,1.16fr\)/)
+    expect(styles).toContain('.observer-dashboard>.weather-forecast { grid-column:2;grid-row:1/span 7')
   })
 
   it('removes every ambient overlay when the display becomes idle', () => {

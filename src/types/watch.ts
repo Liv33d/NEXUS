@@ -16,8 +16,22 @@ export interface WatchRule {
     signalTypes?: SignalType[]
     cooldownMs?: number
     dedupeWindowMs?: number
+    weather?: {
+      severeAlerts?: boolean
+      precipitationProbabilityAtLeast?: number
+      windSpeedAtLeastKmh?: number
+      temperatureAboveC?: number
+      temperatureBelowC?: number
+    }
   }
   delivery: 'in-app'
+}
+
+export interface WatchWeatherMatch {
+  ruleId: string
+  evaluatedAt: number
+  active: boolean
+  reasons: string[]
 }
 
 export interface WatchMatch {
