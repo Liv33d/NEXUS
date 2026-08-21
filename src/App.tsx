@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Bird, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, MonitorUp, Moon, RefreshCw, Satellite, Search, SunMedium, X } from 'lucide-react'
+import { Activity, Bird, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, MonitorUp, Moon, Orbit, PawPrint, Plane, RefreshCw, Satellite, Search, ShipWheel, SunMedium, X } from 'lucide-react'
 import { BottomNav, TopBar } from './components/Chrome'
 import { CasesPage, DiscoverPage, ObserverPage, SearchPanel, SurpriseButton } from './components/Pages'
 import SettingsPage, { type MapTheme, type PerformanceMode } from './components/SettingsPage'
@@ -21,13 +21,7 @@ const earthLayerOptions: Array<{ type: SignalType; label: string }> = [
   { type: 'earthquake', label: 'Seismic' }, { type: 'fire', label: 'Thermal' }, { type: 'weather', label: 'Weather' },
   { type: 'environment', label: 'Environment' }, { type: 'space-weather', label: 'Space weather' },
 ]
-const lensPresets: Array<{ id: string; label: string; description: string; types: SignalType[] }> = [
-  { id: 'world', label: 'World', description: 'All verified live layers', types: ['earthquake', 'fire', 'weather', 'environment', 'space-weather'] },
-  { id: 'storm', label: 'Storm', description: 'Warnings and environmental events', types: ['weather', 'environment'] },
-  { id: 'fire', label: 'Fire', description: 'Thermal and air context', types: ['fire', 'environment'] },
-  { id: 'seismic', label: 'Seismic', description: 'Earthquakes and volcanoes', types: ['earthquake', 'environment'] },
-  { id: 'space', label: 'Space', description: 'Global space weather', types: ['space-weather', 'satellite'] },
-]
+type EarthLensId = 'world' | 'weather' | 'migration' | 'maritime' | 'aviation' | 'animals' | 'orbit' | 'custom'
 
 function supportsWebGL() {
   if (cachedWebGLSupport !== undefined) return cachedWebGLSupport
@@ -47,6 +41,7 @@ export default function App() {
   const [visualMode, setVisualMode] = useState<'globe' | 'map'>(() => supportsWebGL() ? 'globe' : 'map')
   const [activePanel, setActivePanel] = useState<'search' | 'layers' | 'time'>()
   const [earthDomain, setEarthDomain] = useState<'earth' | 'solar'>('earth')
+  const [activeEarthLens, setActiveEarthLens] = useState<EarthLensId>('world')
   const [migrationEnabled, setMigrationEnabled] = useState(() => {
     try { return localStorage.getItem('nexus:migration') === 'true' } catch { return false }
   })
@@ -93,6 +88,33 @@ export default function App() {
   const handleMapViewChange = useCallback((view: GeographicView) => setGeographicView(clampGeographicView(view)), [])
   const returnToGlobe = useCallback(() => { if (webGLAvailable) setVisualMode('globe') }, [webGLAvailable])
   const enterSolarSystem = useCallback(() => { setActivePanel(undefined); setEarthDomain('solar') }, [])
+  const activateEarthLens = useCallback((lens: EarthLensId) => {
+    setActiveEarthLens(lens)
+    if (lens === 'world') {
+      store.setLayers(['earthquake', 'fire', 'weather', 'environment', 'space-weather'])
+      setMigrationEnabled(false)
+    } else if (lens === 'weather') {
+      store.setLayers(['weather', 'environment'])
+      setRadarEnabled(true)
+      setMigrationEnabled(false)
+    } else if (lens === 'migration') {
+      store.setLayers(['environment'])
+      setMigrationEnabled(true)
+    } else if (lens === 'maritime') {
+      store.setLayers(['weather', 'environment', 'infrastructure'])
+      setMigrationEnabled(false)
+    } else if (lens === 'aviation') {
+      store.setLayers(['aircraft', 'weather'])
+      setMigrationEnabled(false)
+    } else if (lens === 'animals') {
+      setMigrationEnabled(false)
+      setActivePanel(undefined)
+      store.setView('observer')
+    } else {
+      store.setLayers(['satellite', 'space-weather'])
+      setMigrationEnabled(false)
+    }
+  }, [store])
 
   useEffect(() => {
     void store.initialize()
@@ -170,7 +192,20 @@ export default function App() {
           <nav className="command-tabs" aria-label="Earth control sections"><button className={activePanel === 'search' ? 'active' : ''} onClick={() => setActivePanel('search')}><Search/>Find</button><button className={activePanel === 'layers' ? 'active' : ''} onClick={() => setActivePanel('layers')}><Layers3/>Layers</button><button className={activePanel === 'time' ? 'active' : ''} onClick={() => setActivePanel('time')}><Clock3/>Time</button></nav>
           {activePanel === 'search' && <><SearchPanel signals={store.signals} onSelect={(signal) => { store.selectSignal(signal.id); setActivePanel(undefined) }} onPlace={(place) => { store.observePlace(place); setActivePanel(undefined) }}/><p className="control-note">Places open directly in Observer. Current evidence remains traceable to its original source.</p></>}
           {activePanel === 'layers' && <>
-            <div className="lens-presets" role="group" aria-label="Question-focused lenses">{lensPresets.map((lens) => <button key={lens.id} onClick={() => store.setLayers(lens.types)}><strong>{lens.label}</strong><small>{lens.description}</small></button>)}</div>
+            <section className="domain-launcher" aria-labelledby="domain-lenses-heading">
+              <div className="domain-heading"><span>EXPLORE BY DOMAIN</span><small>Each lens changes the evidence shown on Earth</small></div>
+              <div className="domain-lens-grid" id="domain-lenses-heading" role="group" aria-label="Earth domain lenses">
+                <button className={activeEarthLens === 'world' ? 'active' : ''} onClick={() => activateEarthLens('world')}><Globe2/><span><strong>Living Earth</strong><small>All verified planetary signals</small></span><b>LIVE</b></button>
+                <button className="solar-domain" onClick={enterSolarSystem}><Orbit/><span><strong>Solar System</strong><small>Calculated planets, Moon and Sun</small></span><b>OPEN</b></button>
+                <button className={activeEarthLens === 'weather' ? 'active' : ''} onClick={() => activateEarthLens('weather')}><CloudRain/><span><strong>Atmosphere</strong><small>Radar, clouds, storms and alerts</small></span><b>LIVE</b></button>
+                <button className={activeEarthLens === 'migration' ? 'active life-domain' : 'life-domain'} onClick={() => activateEarthLens('migration')}><Bird/><span><strong>Bird Migration</strong><small>GBIF observation shifts · derived</small></span><b>{migrationStatus === 'loading' ? '…' : migrationEnabled ? 'ON' : 'VIEW'}</b></button>
+                <button className={activeEarthLens === 'maritime' ? 'active ocean-domain' : 'ocean-domain'} onClick={() => activateEarthLens('maritime')}><ShipWheel/><span><strong>Maritime</strong><small>Ocean hazards and public context</small></span><b>CONTEXT</b></button>
+                <button className={activeEarthLens === 'aviation' ? 'active' : ''} onClick={() => activateEarthLens('aviation')}><Plane/><span><strong>Flight Activity</strong><small>{store.signals.some((signal) => signal.type === 'aircraft' && signal.source.freshness !== 'demo') ? 'Available public aircraft signals' : store.demoMode ? 'Deterministic demonstration feed' : 'No live aircraft provider connected'}</small></span><b>{store.signals.filter((signal) => signal.type === 'aircraft').length || '—'}</b></button>
+                <button onClick={() => activateEarthLens('animals')}><PawPrint/><span><strong>Animals & Life</strong><small>Licensed nearby observations in Observer</small></span><b>OPEN</b></button>
+                <button className={activeEarthLens === 'orbit' ? 'active solar-domain' : 'solar-domain'} onClick={() => activateEarthLens('orbit')}><Satellite/><span><strong>Orbit</strong><small>Space weather and selected objects</small></span><b>VIEW</b></button>
+              </div>
+              <p>Maritime does not imply live vessel tracking. Bird corridors are derived from licensed observation aggregates, and aircraft only appear when a real or clearly marked demo source is available.</p>
+            </section>
             <div className="lighting-control"><span>EARTH LIGHTING</span><div>
               <button className={lightingMode === 'live' ? 'active' : ''} onClick={() => setLightingMode('live')}><Globe2/>Live</button>
               <button className={lightingMode === 'day' ? 'active' : ''} onClick={() => setLightingMode('day')}><SunMedium/>Day</button>
@@ -180,12 +215,10 @@ export default function App() {
               <button className={`environment-lens ${radarEnabled ? 'active' : ''}`} onClick={() => setRadarEnabled((enabled) => !enabled)} aria-pressed={radarEnabled}><CloudRain/><span><strong>Weather radar</strong><small>NOAA MRMS · US domains · 5 min</small></span><b>{radarEnabled ? 'ON' : 'OFF'}</b></button>
               <button className={`environment-lens ${satelliteEnabled ? 'active' : ''}`} onClick={() => setSatelliteEnabled((enabled) => !enabled)} aria-pressed={satelliteEnabled}><Satellite/><span><strong>Observed clouds</strong><small>NASA VIIRS · global · daily</small></span><b>{satelliteEnabled ? 'ON' : 'OFF'}</b></button>
             </div>
-            <div className="domain-grid">
-              <button className={`environment-lens migration-lens ${migrationEnabled ? 'active' : ''}`} onClick={() => setMigrationEnabled((enabled) => !enabled)} aria-pressed={migrationEnabled}><Bird/><span><strong>Migration Watch</strong><small>{migrationStatus === 'live' ? `${migration?.recentRecordCount ?? 0} licensed records · ${migration?.corridors.length ?? 0} shifts` : migrationStatus === 'cached' ? `${migration?.recentRecordCount ?? 0} cached records · offline-safe` : migrationStatus === 'error' ? 'GBIF unavailable · no stored sample' : migrationStatus === 'loading' ? 'Resolving licensed observations…' : 'GBIF evidence · privacy aggregated'}</small></span><b>{migrationStatus === 'loading' ? '…' : migrationEnabled ? 'ON' : 'OFF'}</b></button>
-            </div>
+            {migrationEnabled && <div className="active-domain-note"><Bird/><span><strong>Migration overlay active</strong><small>{migrationStatus === 'live' ? `${migration?.recentRecordCount ?? 0} licensed records · ${migration?.corridors.length ?? 0} derived shifts` : migrationStatus === 'cached' ? `${migration?.recentRecordCount ?? 0} cached records · offline-safe` : migrationStatus === 'error' ? 'GBIF unavailable · no stored sample' : 'Resolving licensed observations…'}</small></span></div>}
             <button className={`ambient-toggle ${ambientMode ? 'active' : ''}`} onClick={() => setAmbientMode((enabled) => !enabled)} aria-pressed={ambientMode}><MonitorUp/><span><strong>Ambient Earth</strong><small>Keeps the display awake and hides controls after 12 seconds</small></span><b>{ambientMode ? 'ON' : 'OFF'}</b></button>
             <div className="lens-summary"><strong>{activeLayerCount}</strong><span>active signal layers</span></div>
-            <div className="lens-grid">{earthLayerOptions.map((layer) => { const count = store.signals.filter((signal) => signal.type === layer.type).length; return <button key={layer.type} className={store.layerVisibility[layer.type] ? 'active' : ''} onClick={() => store.toggleLayer(layer.type)} aria-pressed={store.layerVisibility[layer.type]}><i className={`type-dot ${layer.type}`}/><span><strong>{layer.label}</strong><small>{count} available</small></span><b>{store.layerVisibility[layer.type] ? 'ON' : 'OFF'}</b></button> })}</div>
+            <div className="lens-grid">{earthLayerOptions.map((layer) => { const count = store.signals.filter((signal) => signal.type === layer.type).length; return <button key={layer.type} className={store.layerVisibility[layer.type] ? 'active' : ''} onClick={() => { setActiveEarthLens('custom'); store.toggleLayer(layer.type) }} aria-pressed={store.layerVisibility[layer.type]}><i className={`type-dot ${layer.type}`}/><span><strong>{layer.label}</strong><small>{count} available</small></span><b>{store.layerVisibility[layer.type] ? 'ON' : 'OFF'}</b></button> })}</div>
             <p className="control-note">Environmental imagery is visual context, not a forecast. Signal lenses never delete locally cached evidence.</p>
           </>}
           {activePanel === 'time' && <><div className="time-panel"><TimeControl value={store.timeWindow} onChange={(window) => { setReplayCutoff(undefined); store.setTimeWindow(window) }}/></div><ReplayControl signals={windowSignals} cutoff={replayCutoff} onCutoff={setReplayCutoff}/><p className="control-note">Replay reveals observations by their authoritative timestamps. It does not interpolate movement or imply causation.</p></>}
@@ -195,7 +228,7 @@ export default function App() {
       {selectedSignal && <SignalSheet signal={selectedSignal} onClose={() => store.selectSignal(undefined)}/>} 
       {replayCutoff && <button className="replay-indicator" onClick={() => { setReplayCutoff(undefined); setActivePanel('time') }}><span>REPLAY · {new Date(replayCutoff).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><strong>Return live</strong></button>}
     </>
-  ), [activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, enterSolarSystem, geographicView, globeReady, handleGlobeViewChange, handleMapViewChange, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, migration, migrationEnabled, migrationStatus, performanceMode, radarEnabled, replayCutoff, returnToGlobe, satelliteEnabled, selectSignal, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable, windowSignals])
+  ), [activateEarthLens, activeEarthLens, activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, enterSolarSystem, geographicView, globeReady, handleGlobeViewChange, handleMapViewChange, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, migration, migrationEnabled, migrationStatus, performanceMode, radarEnabled, replayCutoff, returnToGlobe, satelliteEnabled, selectSignal, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable, windowSignals])
 
   return (
     <div className={`app-shell ${ambientActive && ambientIdle ? 'ambient-idle' : ''}`}>
