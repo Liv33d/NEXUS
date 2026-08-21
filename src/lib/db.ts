@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Discovery, ProviderStatus, Signal } from '../types/signal'
+import type { WatchRule } from '../types/watch'
 
 export interface SettingRecord { key: string; value: unknown }
 export interface CacheRecord { key: string; providerId: string; fetchedAt: number; expiresAt: number; payload: unknown }
@@ -10,6 +11,7 @@ class NexusDatabase extends Dexie {
   providerStatus!: EntityTable<ProviderStatus, 'providerId'>
   settings!: EntityTable<SettingRecord, 'key'>
   cache!: EntityTable<CacheRecord, 'key'>
+  watches!: EntityTable<WatchRule, 'id'>
 
   constructor() {
     super('nexus')
@@ -19,6 +21,14 @@ class NexusDatabase extends Dexie {
       providerStatus: 'providerId, state, lastSuccess',
       settings: 'key',
       cache: 'key, providerId, fetchedAt, expiresAt',
+    })
+    this.version(2).stores({
+      signals: 'id, type, timestamp, source.provider, location.h3Index, expiresAt',
+      discoveries: 'id, createdAt, score, status',
+      providerStatus: 'providerId, state, lastSuccess',
+      settings: 'key',
+      cache: 'key, providerId, fetchedAt, expiresAt',
+      watches: 'id, enabled, createdAt, target.kind',
     })
   }
 }

@@ -1,10 +1,12 @@
-import { Activity, BookmarkCheck, CloudSun, Download, ExternalLink, Gauge, LocateFixed, MapPin, Navigation, NotebookPen, Radio, Search, ShieldCheck, Sparkles, Star, Sunrise, Sunset, Trash2, Wind, X } from 'lucide-react'
+import { Activity, BellRing, BookmarkCheck, CloudSun, Compass, Download, ExternalLink, Gauge, LocateFixed, MapPin, Navigation, NotebookPen, Radio, Search, ShieldCheck, Sparkles, Star, Sunrise, Sunset, Thermometer, Trash2, Waves, Wind, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { dedupeLocationLabel, displayTemperature, displayWindSpeed, fetchObserverContext, formatObserverWallTime, searchObserverPlaces, weatherCodeLabel, type ObserverContext, type ObserverPlace, type TemperatureUnit } from '../providers/openMeteo'
+import { dedupeLocationLabel, displayTemperature, displayWindSpeed, fetchMarineContext, fetchObserverContext, formatObserverWallTime, searchObserverPlaces, weatherCodeLabel, type MarineContext, type ObserverContext, type ObserverPlace, type TemperatureUnit } from '../providers/openMeteo'
 import { exportCase } from '../lib/caseExport'
 import { distanceKm } from '../lib/geo'
 import { searchSignals } from '../lib/search'
 import type { Discovery, Signal } from '../types/signal'
+import type { WatchRule } from '../types/watch'
+import { evaluateWatch, placeWatchId } from '../lib/watch'
 import { EmptyState } from './Chrome'
 import { DiscoveryCard } from './DiscoveryCard'
 
@@ -29,14 +31,15 @@ export function CasesPage({ discoveries, onOpen }: { discoveries: Discovery[]; o
   return <main className="page"><div className="page-heading"><div><span className="eyebrow">LOCAL & PRIVATE</span><h1>Cases</h1></div></div>{saved.length ? <div className="card-stack">{saved.map((discovery, index) => <DiscoveryCard key={discovery.id} discovery={discovery} index={index} onOpen={() => onOpen(discovery.id)} onSave={() => undefined}/>)}</div> : <EmptyState icon={<ShieldCheck/>} title="No saved cases">Save a discovery to preserve it locally for later investigation. Nothing is uploaded.</EmptyState>}</main>
 }
 
-export function ObserverPage({ signals }: { signals: Signal[] }) {
-  const [location, setLocation] = useState<{ latitude: number; longitude: number }>()
-  const [placeName, setPlaceName] = useState<string>()
+export function ObserverPage({ signals, initialPlace, watches, onWatch, onUnwatch }: { signals: Signal[]; initialPlace?: ObserverPlace; watches: WatchRule[]; onWatch(place: ObserverPlace): Promise<void>; onUnwatch(latitude: number, longitude: number): Promise<void> }) {
+  const [location, setLocation] = useState<{ latitude: number; longitude: number } | undefined>(() => initialPlace ? { latitude: initialPlace.latitude, longitude: initialPlace.longitude } : undefined)
+  const [placeName, setPlaceName] = useState<string | undefined>(() => initialPlace ? [initialPlace.name, initialPlace.subtitle].filter(Boolean).join(', ') : undefined)
   const [placeQuery, setPlaceQuery] = useState('')
   const [placeResults, setPlaceResults] = useState<ObserverPlace[]>([])
   const [searching, setSearching] = useState(false)
   const [denied, setDenied] = useState(false)
   const [context, setContext] = useState<ObserverContext>()
+  const [marine, setMarine] = useState<MarineContext>()
   const [contextState, setContextState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [now, setNow] = useState(Date.now())
   const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>(() => {
@@ -54,7 +57,11 @@ export function ObserverPage({ signals }: { signals: Signal[] }) {
       return value.filter((item): item is ObserverPlace => Boolean(item && typeof item === 'object' && 'id' in item && 'name' in item && 'latitude' in item && 'longitude' in item && typeof item.id === 'string' && typeof item.name === 'string' && typeof item.latitude === 'number' && typeof item.longitude === 'number' && Math.abs(item.latitude) <= 90 && Math.abs(item.longitude) <= 180)).slice(0, 6).map((item) => ({ ...item, name: dedupeLocationLabel(item.name) }))
     } catch { return [] }
   })
+  const currentPlaceId = location ? `saved-${location.latitude.toFixed(4)}-${location.longitude.toFixed(4)}` : undefined
+  const currentWatch = location ? watches.find((watch) => watch.id === placeWatchId(location.latitude, location.longitude)) : undefined
+  const watched = Boolean(currentWatch)
   const nearby = location ? signals.filter((signal) => signal.location && distanceKm(location, signal.location) <= 500).sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0)).slice(0, 6) : []
+  const watchMatches = currentWatch ? evaluateWatch(currentWatch, signals).signalIds.length : 0
   const request = () => navigator.geolocation?.getCurrentPosition((position) => { setLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude }); setPlaceName('Current location') }, () => setDenied(true), { enableHighAccuracy: false, timeout: 8000 })
   const findPlace = async () => {
     if (placeQuery.trim().length < 2) return
@@ -70,8 +77,18 @@ export function ObserverPage({ signals }: { signals: Signal[] }) {
   const saveCurrentPlace = () => {
     if (!location) return
     const name = placeName ?? `${location.latitude.toFixed(2)}°, ${location.longitude.toFixed(2)}°`
-    const place: ObserverPlace = { id: `saved-${location.latitude.toFixed(4)}-${location.longitude.toFixed(4)}`, name, subtitle: 'Saved observation point', ...location }
+    const existing = savedPlaces.find((item) => item.id === currentPlaceId)
+    const place: ObserverPlace = { id: currentPlaceId!, name, subtitle: existing?.subtitle ?? 'Saved observation point', ...location }
     setSavedPlaces((places) => [place, ...places.filter((item) => item.id !== place.id)].slice(0, 6))
+  }
+  const toggleWatch = () => {
+    if (!location || !currentPlaceId) return
+    const name = placeName ?? `${location.latitude.toFixed(2)}°, ${location.longitude.toFixed(2)}°`
+    const existing = savedPlaces.find((place) => place.id === currentPlaceId)
+    const place: ObserverPlace = { id: currentPlaceId, name, subtitle: existing?.subtitle ?? '250 km · elevated activity', ...location }
+    setSavedPlaces((places) => [place, ...places.filter((item) => item.id !== currentPlaceId)].slice(0, 6))
+    if (watched) void onUnwatch(location.latitude, location.longitude)
+    else void onWatch(place)
   }
   useEffect(() => { try { localStorage.setItem('nexus:observerPlaces', JSON.stringify(savedPlaces)) } catch { /* Private storage unavailable. */ } }, [savedPlaces])
   useEffect(() => { try { localStorage.setItem('nexus:temperatureUnit', temperatureUnit) } catch { /* Private storage unavailable. */ } }, [temperatureUnit])
@@ -82,7 +99,15 @@ export function ObserverPage({ signals }: { signals: Signal[] }) {
     const load = () => {
       if (document.visibilityState === 'hidden') return
       setContextState((state) => state === 'ready' ? state : 'loading')
-      void fetchObserverContext(location.latitude, location.longitude, controller.signal).then((value) => { setContext(value); setContextState('ready') }).catch(() => { if (!controller.signal.aborted) setContextState('error') })
+      void Promise.allSettled([
+        fetchObserverContext(location.latitude, location.longitude, controller.signal),
+        fetchMarineContext(location.latitude, location.longitude, controller.signal),
+      ]).then(([weatherResult, marineResult]) => {
+        if (weatherResult.status === 'fulfilled') { setContext(weatherResult.value); setContextState('ready') }
+        else if (!controller.signal.aborted) setContextState('error')
+        if (marineResult.status === 'fulfilled' && marineResult.value && distanceKm(location, { latitude: marineResult.value.gridLatitude, longitude: marineResult.value.gridLongitude }) <= 150) setMarine(marineResult.value)
+        else setMarine(undefined)
+      })
     }
     load()
     const timer = window.setInterval(load, 10 * 60_000)
@@ -92,13 +117,26 @@ export function ObserverPage({ signals }: { signals: Signal[] }) {
   const localClock = (() => { try { return new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit', timeZone: context?.timezone }).format(now) } catch { return new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) } })()
   const unitMark = temperatureUnit === 'fahrenheit' ? 'F' : 'C'
   const windUnit = temperatureUnit === 'fahrenheit' ? 'mph' : 'km/h'
-  return <main className="page observer-page"><div className="page-heading"><div><span className="eyebrow">AMBIENT WORLD WINDOW</span><h1>Observer</h1></div><div className="observer-heading-tools"><div className="temperature-toggle" role="group" aria-label="Temperature unit"><button className={temperatureUnit === 'fahrenheit' ? 'active' : ''} aria-pressed={temperatureUnit === 'fahrenheit'} onClick={() => setTemperatureUnit('fahrenheit')}>°F</button><button className={temperatureUnit === 'celsius' ? 'active' : ''} aria-pressed={temperatureUnit === 'celsius'} onClick={() => setTemperatureUnit('celsius')}>°C</button></div><Radio className="observer-radio"/></div></div>{!location ? <div className="permission-card observer-picker"><MapPin/><h2>Choose an observation point</h2><p>Search anywhere without sharing your location, or use the device location after you ask.</p>{savedPlaces.length > 0 && <div className="saved-observers"><span>SAVED POINTS</span>{savedPlaces.map((place) => <div key={place.id}><button onClick={() => selectPlace(place)}><Star/><span><strong>{place.name}</strong><small>{place.subtitle}</small></span></button><button aria-label={`Remove ${place.name}`} onClick={() => setSavedPlaces((places) => places.filter((item) => item.id !== place.id))}><X/></button></div>)}</div>}<form className="place-search" onSubmit={(event) => { event.preventDefault(); void findPlace() }}><Search/><input value={placeQuery} onChange={(event) => setPlaceQuery(event.target.value)} placeholder="City, region, country, or postal code…" aria-label="Search for an observation point"/><button disabled={placeQuery.trim().length < 2 || searching}>{searching ? 'Searching…' : 'Search'}</button></form>{placeResults.length > 0 && <div className="place-results">{placeResults.map((place) => <button key={place.id} onClick={() => selectPlace(place)}><span><strong>{place.name}</strong><small>{place.subtitle || `${place.latitude.toFixed(2)}°, ${place.longitude.toFixed(2)}°`}</small></span><Navigation/></button>)}</div>}<div className="observer-divider"><span>or</span></div><button className="secondary-action" onClick={request}><LocateFixed/> Use current location</button>{denied && <small>Location wasn’t available. Search for a place instead, or enable location in browser settings.</small>}</div> : <><div className="observer-hero"><span>OBSERVING · {context?.timezone ?? 'LOCAL'}</span><strong>{placeName ?? `${location.latitude.toFixed(2)}°, ${location.longitude.toFixed(2)}°`}</strong><time>{localClock}</time>{context && <div className="observer-weather"><b>{Math.round(displayTemperature(context.temperature, temperatureUnit))}°{unitMark}</b><small>{weatherCodeLabel(context.weatherCode)} · feels {Math.round(displayTemperature(context.apparentTemperature, temperatureUnit))}°</small></div>}</div><div className="observer-location-actions"><button onClick={() => { setLocation(undefined); setContext(undefined); setContextState('idle') }}>Change location</button><button onClick={saveCurrentPlace}><Star/> Save point</button></div><div className="ambient-grid"><div><CloudSun/><span>Weather</span><strong>{contextState === 'loading' ? 'Loading…' : context ? weatherCodeLabel(context.weatherCode) : 'Unavailable'}</strong></div><div><Wind/><span>Wind</span><strong>{context ? `${Math.round(displayWindSpeed(context.windSpeed, temperatureUnit))} ${windUnit}` : '—'}</strong></div><div><Gauge/><span>Air quality</span><strong>{context?.aqi ? `AQI ${Math.round(context.aqi)}` : '—'}</strong></div><div><Sunrise/><span>Sunrise</span><strong>{context ? formatObserverWallTime(context.sunrise) : '—'}</strong></div><div><Sunset/><span>Sunset</span><strong>{context ? formatObserverWallTime(context.sunset) : '—'}</strong></div><div><Activity/><span>Within 500 km</span><strong>{nearby.length}</strong></div></div>{contextState === 'error' && <p className="context-error">Local weather is temporarily unavailable. Nearby NEXUS sources remain active.</p>}<h2 className="section-title">Nearby activity</h2><div className="nearby-list">{nearby.length ? nearby.map((signal) => <div key={signal.id}><span className={`type-dot ${signal.type}`}/><section><strong>{signal.title}</strong><small>{signal.source.provider} · {signal.source.freshness}</small></section></div>) : <p className="quiet-copy">No qualifying signals are currently within 500 km.</p>}</div></>}</main>
+  const watchedIds = new Set(watches.map((watch) => watch.id))
+  return <main className="page observer-page"><div className="page-heading"><div><span className="eyebrow">YOUR EARTH</span><h1>Observer</h1></div><div className="observer-heading-tools"><div className="temperature-toggle" role="group" aria-label="Temperature unit"><button className={temperatureUnit === 'fahrenheit' ? 'active' : ''} aria-pressed={temperatureUnit === 'fahrenheit'} onClick={() => setTemperatureUnit('fahrenheit')}>°F</button><button className={temperatureUnit === 'celsius' ? 'active' : ''} aria-pressed={temperatureUnit === 'celsius'} onClick={() => setTemperatureUnit('celsius')}>°C</button></div><Radio className="observer-radio"/></div></div>{!location ? <div className="permission-card observer-picker"><MapPin/><h2>Choose an observation point</h2><p>Search anywhere without sharing your location, or use the device location only when you choose.</p>{savedPlaces.length > 0 && <div className="saved-observers"><span>YOUR EARTH</span>{savedPlaces.map((place) => { const isWatched = watchedIds.has(placeWatchId(place.latitude, place.longitude)); return <div key={place.id}><button onClick={() => selectPlace(place)}>{isWatched ? <BellRing/> : <Star/>}<span><strong>{place.name}</strong><small>{isWatched ? `Watching · ${place.subtitle}` : place.subtitle}</small></span></button><button aria-label={`Remove ${place.name}`} onClick={() => setSavedPlaces((places) => places.filter((item) => item.id !== place.id))}><X/></button></div> })}</div>}<form className="place-search" onSubmit={(event) => { event.preventDefault(); void findPlace() }}><Search/><input value={placeQuery} onChange={(event) => setPlaceQuery(event.target.value)} placeholder="City, region, country, or postal code…" aria-label="Search for an observation point"/><button disabled={placeQuery.trim().length < 2 || searching}>{searching ? 'Searching…' : 'Search'}</button></form>{placeResults.length > 0 && <div className="place-results">{placeResults.map((place) => <button key={place.id} onClick={() => selectPlace(place)}><span><strong>{place.name}</strong><small>{place.subtitle || `${place.latitude.toFixed(2)}°, ${place.longitude.toFixed(2)}°`}</small></span><Navigation/></button>)}</div>}<div className="observer-divider"><span>or</span></div><button className="secondary-action" onClick={request}><LocateFixed/> Use current location</button>{denied && <small>Location wasn’t available. Search for a place instead, or enable location in browser settings.</small>}</div> : <><div className="observer-hero"><span>OBSERVING · {context?.timezone ?? 'LOCAL'}</span><strong>{placeName ?? `${location.latitude.toFixed(2)}°, ${location.longitude.toFixed(2)}°`}</strong><time>{localClock}</time>{context && <div className="observer-weather"><b>{Math.round(displayTemperature(context.temperature, temperatureUnit))}°{unitMark}</b><small>{weatherCodeLabel(context.weatherCode)} · feels {Math.round(displayTemperature(context.apparentTemperature, temperatureUnit))}°</small></div>}</div><div className="observer-location-actions"><button onClick={() => { setLocation(undefined); setContext(undefined); setMarine(undefined); setContextState('idle') }}>Change location</button><button onClick={saveCurrentPlace}><Star/> Save</button><button className={watched ? 'watching' : ''} onClick={toggleWatch}><BellRing/> {watched ? 'Watching' : 'Watch'}</button></div>{watched && <div className={`watch-status ${watchMatches ? 'active' : ''}`}><BellRing/><span><strong>{watchMatches ? `${watchMatches} elevated signal${watchMatches === 1 ? '' : 's'} nearby` : 'No elevated nearby activity'}</strong><small>Checked when NEXUS is open · 250 km · severity 55+</small></span></div>}<div className="ambient-grid"><div><CloudSun/><span>Weather</span><strong>{contextState === 'loading' ? 'Loading…' : context ? weatherCodeLabel(context.weatherCode) : 'Unavailable'}</strong></div><div><Wind/><span>Wind</span><strong>{context ? `${Math.round(displayWindSpeed(context.windSpeed, temperatureUnit))} ${windUnit}` : '—'}</strong></div><div><Gauge/><span>Air quality</span><strong>{context?.aqi ? `AQI ${Math.round(context.aqi)}` : '—'}</strong></div><div><Sunrise/><span>Sunrise</span><strong>{context ? formatObserverWallTime(context.sunrise) : '—'}</strong></div><div><Sunset/><span>Sunset</span><strong>{context ? formatObserverWallTime(context.sunset) : '—'}</strong></div><div><Activity/><span>Within 500 km</span><strong>{nearby.length}</strong></div></div>{marine && <><h2 className="section-title">Ocean nearby <small>MODELED · OPEN‑METEO</small></h2><div className="marine-grid"><div><Waves/><span>Wave height</span><strong>{marine.waveHeight !== undefined ? `${marine.waveHeight.toFixed(1)} m` : '—'}</strong><small>{marine.wavePeriod ? `${marine.wavePeriod.toFixed(0)} sec period` : 'Model grid'}</small></div><div><Thermometer/><span>Sea surface</span><strong>{marine.seaSurfaceTemperature !== undefined ? `${Math.round(displayTemperature(marine.seaSurfaceTemperature, temperatureUnit))}°${unitMark}` : '—'}</strong><small>Nearest sea cell</small></div><div><Compass/><span>Current</span><strong>{marine.currentVelocity !== undefined ? `${marine.currentVelocity.toFixed(1)} km/h` : '—'}</strong><small>{marine.currentDirection !== undefined ? `${Math.round(marine.currentDirection)}° flow` : 'Modeled'}</small></div></div><p className="model-note">Marine conditions are model estimates from the nearest sea grid and are not suitable for navigation.</p></>}{contextState === 'error' && <p className="context-error">Local weather is temporarily unavailable. Nearby NEXUS sources remain active.</p>}<h2 className="section-title">Nearby activity</h2><div className="nearby-list">{nearby.length ? nearby.map((signal) => <div key={signal.id}><span className={`type-dot ${signal.type}`}/><section><strong>{signal.title}</strong><small>{signal.source.provider} · {signal.source.freshness}</small></section></div>) : <p className="quiet-copy">No qualifying signals are currently within 500 km.</p>}</div></>}</main>
 }
 
-export function SearchPanel({ signals, onSelect }: { signals: Signal[]; onSelect(signal: Signal): void }) {
+export function SearchPanel({ signals, onSelect, onPlace }: { signals: Signal[]; onSelect(signal: Signal): void; onPlace(place: ObserverPlace): void }) {
   const [query, setQuery] = useState('')
   const results = useMemo(() => searchSignals(signals, query, 8), [query, signals])
-  return <div className="search-panel"><Search/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try ‘earthquakes near Japan’" aria-label="Search NEXUS"/>{results.length > 0 && <div className="search-results">{results.map((signal) => <button key={signal.id} onClick={() => { onSelect(signal); setQuery('') }}><MapPin size={15}/><span>{signal.title}<small>{signal.type} · {signal.source.provider}</small></span><Navigation size={14}/></button>)}</div>}{query.trim().length >= 2 && results.length === 0 && <div className="search-empty">No current evidence matches this query.<small>Observer can search any place even when no Signal is present.</small></div>}</div>
+  const [places, setPlaces] = useState<ObserverPlace[]>([])
+  const [placeState, setPlaceState] = useState<'idle' | 'loading' | 'ready'>('idle')
+  useEffect(() => {
+    if (query.trim().length < 2) { setPlaces([]); setPlaceState('idle'); return }
+    const controller = new AbortController()
+    setPlaceState('loading')
+    const timer = window.setTimeout(() => {
+      void searchObserverPlaces(query, controller.signal).then((value) => { setPlaces(value.slice(0, 4)); setPlaceState('ready') }).catch(() => { if (!controller.signal.aborted) { setPlaces([]); setPlaceState('ready') } })
+    }, 320)
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [query])
+  const hasResults = results.length > 0 || places.length > 0
+  return <div className="search-panel universal-search"><Search/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Place, signal, event, or source…" aria-label="Search NEXUS"/>{query.trim().length >= 2 && <div className="search-results">{places.length > 0 && <div className="search-result-label">PLACES</div>}{places.map((place) => <button key={`place-${place.id}`} onClick={() => { onPlace(place); setQuery('') }}><MapPin size={15}/><span>{place.name}<small>{place.subtitle || `${place.latitude.toFixed(2)}°, ${place.longitude.toFixed(2)}°`}</small></span><Navigation size={14}/></button>)}{results.length > 0 && <div className="search-result-label">CURRENT EVIDENCE</div>}{results.map((signal) => <button key={signal.id} onClick={() => { onSelect(signal); setQuery('') }}><Activity size={15}/><span>{signal.title}<small>{signal.type} · {signal.source.provider}</small></span><Navigation size={14}/></button>)}{!hasResults && placeState === 'loading' && <div className="search-loading">Resolving place…</div>}{!hasResults && placeState === 'ready' && <div className="search-empty">No place or current evidence matches this query.<small>Try a city with its country or region for precise results.</small></div>}</div>}</div>
 }
 
 export function SurpriseButton({ onClick }: { onClick(): void }) { return <button className="surprise-button" onClick={onClick}><Sparkles size={16}/> Surprise me</button> }

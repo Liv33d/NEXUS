@@ -49,9 +49,11 @@
 
 ## Open‑Meteo
 
-- Use: on-demand Observer Mode context only, not ordinary-weather map noise.
+- Use: on-demand Observer Mode weather, air-quality, geocoding, and nearby marine context only—not ordinary-weather map noise.
 - Authentication: none for the documented non-commercial tier.
 - Captured: current temperature, apparent temperature, precipitation, cloud, wind, pressure, weather code, sunrise/sunset, U.S. AQI, and PM2.5.
+- Marine context: wave height/direction/period, sea-surface temperature, and ocean-current velocity/direction from the nearest sea grid when that grid is within 150 km. These are labeled modeled and explicitly not suitable for navigation.
+- Commercial note: the public no-key endpoint is documented for non-commercial use. A commercial NEXUS release must self-host the AGPL server where compatible or use Open-Meteo's commercial customer endpoint.
 
 ## NOAA/NWS MRMS radar
 
