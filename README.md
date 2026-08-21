@@ -4,7 +4,7 @@
 
 NEXUS is a mobile-first, privacy-friendly global signal discovery system. It transforms legitimate public data into a traceable model of what is happening on Earth—without paid APIs, accounts, trackers, a proprietary backend, or runtime AI.
 
-The current release is a working multi-source vertical slice. It includes a NASA-textured interactive globe with astronomical illumination, zoom-aware offline city labels and borders, a detailed MapLibre investigation map, weather imagery, official active-cyclone geometry, live natural-hazard feeds, bounded GBIF LIFE context, locally propagated space-station passes, Open‑Meteo place context, normalized Signals, H3 Planetary Memory, explainable Pulse deviations, durable Cases and Watches, offline PWA support, provenance, and safe recovery.
+The current release is a working multi-source vertical slice. It includes a NASA-textured interactive globe with astronomical illumination, zoom-aware offline city labels and borders, a detailed MapLibre investigation map, weather imagery, official active-cyclone geometry, live natural-hazard feeds, a privacy-aggregated GBIF Migration Watch, bounded GBIF LIFE context, locally propagated space-station passes, a real-time ephemeris-driven Solar System, Open‑Meteo place context, normalized Signals, H3 Planetary Memory, explainable Pulse deviations, durable Cases and Watches, offline PWA support, provenance, and safe recovery.
 
 ## Quick start
 
@@ -65,6 +65,8 @@ flowchart TD
 | NASA FIRMS | Optional live/delayed | User-supplied free MAP key stored only on-device |
 | Open‑Meteo | On demand | Globally ranked place search plus weather, selectable units, air quality, and location-local sunrise/sunset in Observer Mode |
 | GBIF | On demand | Bounded nearby LIFE observations; only permissively licensed records enter the summary |
+| GBIF Migration Watch | On demand | Coarse recent bird-observation density and derived 14-day centroid shifts; never presented as individual tracking |
+| Astronomy Engine | Local calculation | Current Sun, Moon, planet and Pluto positions using VSOP87/NOVAS-based ephemerides |
 | CelesTrak | 2-hour snapshot | Selected OMM orbital elements; next passes are propagated locally in a Web Worker |
 | RainViewer + NOAA/NWS MRMS | Live overlay | Latest global best-effort radar in Detail Map; official U.S. composite fallback and globe context |
 | NOAA/NESDIS GeoColor | Live overlay | Latest merged GOES-East/West observed cloud imagery |
