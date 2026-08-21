@@ -6,6 +6,7 @@ const globe = readFileSync(resolve(process.cwd(), 'src/components/GlobeView.tsx'
 const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8')
 const styles = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8')
 const migration = readFileSync(resolve(process.cwd(), 'src/lib/migration.ts'), 'utf8')
+const life = readFileSync(resolve(process.cwd(), 'src/lib/lifeGlobe.ts'), 'utf8')
 
 describe('globe visual stability contract', () => {
   it('keeps raster shells separated from Earth geometry on mobile GPUs', () => {
@@ -27,6 +28,25 @@ describe('globe visual stability contract', () => {
     expect(globe).toContain("color: '#a4ffcc'")
     expect(migration).toContain("params.append('license', 'CC0_1_0')")
     expect(migration).toContain("params.append('license', 'CC_BY_4_0')")
+    expect(app).toContain('migrationFocus.distanceKm.toLocaleString()')
+    expect(app).toContain('migrationFocus.direction')
+    expect(app).toContain('corridor.commonName ?? corridor.species')
+  })
+
+  it('opens Animals and Life on Earth with licensed biodiversity context', () => {
+    const animalStart = app.indexOf("lens === 'animals'")
+    const animalBranch = app.slice(animalStart, app.indexOf('} else {', animalStart))
+    expect(animalBranch).toContain('setLifeEnabled(true)')
+    expect(animalBranch).not.toContain("store.setView('observer')")
+    expect(app).toContain('life={lifeEnabled ? life : undefined}')
+    expect(life).toContain("params.append('license', 'CC0_1_0')")
+    expect(life).toContain('coarse H3 cells')
+  })
+
+  it('exposes every normalized signal category in Earth controls', () => {
+    for (const type of ['earthquake', 'fire', 'weather', 'aircraft', 'satellite', 'space-weather', 'media', 'environment', 'infrastructure']) {
+      expect(app).toContain(`type: '${type}'`)
+    }
   })
 
   it('uses a compact portrait control hierarchy', () => {
