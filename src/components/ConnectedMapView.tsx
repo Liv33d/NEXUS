@@ -140,7 +140,20 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
     map.on('error', (event) => {
       if (!settled && /style|source|worker|webgl/i.test(String(event.error?.message))) { settled = true; window.clearTimeout(timeout); onFallback() }
     })
-    return () => { settled = true; window.clearTimeout(timeout); window.cancelAnimationFrame(resizeFrame); resizeObserver.disconnect(); window.visualViewport?.removeEventListener('resize', resize); canvas.removeEventListener('webglcontextlost', contextLostHandler); canvas.removeEventListener('webglcontextrestored', contextRestoredHandler); map.remove(); mapRef.current = null }
+    return () => {
+      settled = true
+      window.clearTimeout(timeout)
+      window.cancelAnimationFrame(resizeFrame)
+      resizeObserver.disconnect()
+      window.visualViewport?.removeEventListener('resize', resize)
+      canvas.removeEventListener('webglcontextlost', contextLostHandler)
+      canvas.removeEventListener('webglcontextrestored', contextRestoredHandler)
+      // MapLibre can throw synchronously when a route change tears it down
+      // before its remote style has finished loading. Navigation must never
+      // take the whole application into Safe Mode because a basemap is slow.
+      try { map.remove() } catch { /* Detached renderer is already unusable. */ }
+      mapRef.current = null
+    }
   }, [mapTheme, onFallback])
 
   useEffect(() => {
