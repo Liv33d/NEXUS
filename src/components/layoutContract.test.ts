@@ -12,9 +12,19 @@ describe('mobile interaction layout contract', () => {
     expect(styles).not.toMatch(/\.earth-command-rail|\.globe-quick-lenses|\.view-toggle|\.map-mode-switch/)
   })
 
+  it('exposes coherent Earth domains without presenting unavailable feeds as live', () => {
+    for (const label of ['Solar System', 'Bird Migration', 'Maritime', 'Flight Activity', 'Animals & Life', 'Orbit']) {
+      expect(app).toContain(label)
+    }
+    expect(app).toContain('Maritime does not imply live vessel tracking')
+    expect(app).toContain('No live aircraft provider connected')
+    expect(styles).toContain('.domain-lens-grid')
+  })
+
   it('enters the Solar System by continuing outward from Earth', () => {
     expect(app).toContain('onRequestSolar={enterSolarSystem}')
-    expect(app).not.toMatch(/solar-launch|>OPEN<\/b>/)
+    expect(app).not.toContain('solar-launch')
+    expect(app).toContain('<strong>Solar System</strong>')
     expect(styles).toContain('.space-transition-cue')
   })
 
