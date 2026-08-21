@@ -6,6 +6,7 @@ afterEach(() => vi.restoreAllMocks())
 describe('Observer location normalization', () => {
   it('removes duplicate administrative labels globally', () => {
     expect(observerPlaceSubtitle({ name: 'Caguas', admin1: 'Caguas', admin2: 'Caguas Municipio', country: 'Puerto Rico', country_code: 'PR' })).toBe('Puerto Rico')
+    expect(observerPlaceSubtitle({ name: 'Caguas', admin1: 'Cañabón Barrio', admin2: 'Caguas', country: 'PR', country_code: 'PR' })).toBe('Puerto Rico')
     expect(observerPlaceSubtitle({ name: 'Berlin', admin1: 'Berlin', admin3: 'Berlin, Stadt', country: 'Germany', country_code: 'DE' })).toBe('Germany')
     expect(dedupeLocationLabel('Caguas, Caguas, Puerto Rico')).toBe('Caguas, Puerto Rico')
   })
