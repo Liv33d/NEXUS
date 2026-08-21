@@ -1,10 +1,11 @@
 import { z } from 'zod'
 import { fetchWithTimeout, providerHttpError } from './types'
+import { fetchGbifTaxonPresentation, type TaxonMedia } from '../lib/gbifPresentation'
 
 const occurrenceSchema = z.object({
   count: z.number().optional(),
   results: z.array(z.object({
-    key: z.number(), scientificName: z.string().max(300).optional(), species: z.string().max(300).optional(), vernacularName: z.string().max(300).optional(),
+    key: z.number(), speciesKey: z.number().optional(), scientificName: z.string().max(300).optional(), species: z.string().max(300).optional(), vernacularName: z.string().max(300).optional(),
     kingdom: z.string().max(100).optional(), class: z.string().max(150).optional(), order: z.string().max(150).optional(), family: z.string().max(150).optional(),
     eventDate: z.string().optional(), basisOfRecord: z.string().max(80).optional(), datasetKey: z.string().optional(), datasetTitle: z.string().max(500).optional(),
     license: z.string().max(300).optional(), issues: z.array(z.string()).optional(), coordinateUncertaintyInMeters: z.number().optional(),
@@ -13,6 +14,7 @@ const occurrenceSchema = z.object({
 
 export interface LifeTaxonSummary {
   id: string
+  taxonKey?: number
   scientificName: string
   commonName?: string
   kingdom?: string
@@ -23,6 +25,7 @@ export interface LifeTaxonSummary {
   occurrenceUrl: string
   datasetTitle?: string
   basisOfRecord?: string
+  media?: TaxonMedia
 }
 
 export interface LifeContext {
@@ -77,14 +80,21 @@ export async function fetchLifeContext(latitude: number, longitude: number, sign
     const prior = taxa.get(key)
     taxa.set(key, prior ? { ...prior, count: prior.count + 1, latestObservation: Number.isFinite(observedAt) ? Math.max(prior.latestObservation ?? 0, observedAt) : prior.latestObservation } : {
       id: `gbif-taxon-${key.replace(/[^a-z0-9]+/g, '-')}`,
+      taxonKey: record.speciesKey,
       scientificName, commonName: record.vernacularName, kingdom: record.kingdom, taxonomicClass: record.class,
       count: 1, latestObservation: Number.isFinite(observedAt) ? observedAt : undefined, license,
       occurrenceUrl: `https://www.gbif.org/occurrence/${record.key}`, datasetTitle: record.datasetTitle, basisOfRecord: record.basisOfRecord,
     })
   }
+  const ranked = [...taxa.values()].sort((a, b) => b.count - a.count || (b.latestObservation ?? 0) - (a.latestObservation ?? 0)).slice(0, 10)
+  const enriched = await Promise.all(ranked.slice(0, 6).map(async (taxon) => {
+    if (!taxon.taxonKey) return taxon
+    const presentation = await fetchGbifTaxonPresentation(taxon.taxonKey, taxon.occurrenceUrl, signal)
+    return { ...taxon, commonName: presentation.commonName ?? taxon.commonName, media: presentation.media }
+  }))
   const context = {
     radiusKm, sampledRecords: payload.results.length, totalMatchingRecords: payload.count ?? payload.results.length,
-    taxa: [...taxa.values()].sort((a, b) => b.count - a.count || (b.latestObservation ?? 0) - (a.latestObservation ?? 0)).slice(0, 10),
+    taxa: [...enriched, ...ranked.slice(6)],
     retrievedAt: now, sourceUrl,
     methodology: 'A bounded sample of recent georeferenced GBIF occurrences. Only CC0/CC BY records with acceptable coordinate uncertainty are summarized. Counts describe records, not abundance or population.',
   }

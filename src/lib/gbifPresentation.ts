@@ -19,10 +19,14 @@ export function selectVernacularName(names: VernacularName[], requestedLocale: s
   const [base, region] = locale.split('-')
   const accepted = new Set(languageAliases[base ?? ''] ?? [base])
   const matchesLanguage = (name: VernacularName) => accepted.has(name.language?.toLowerCase() ?? '')
-  return names.find((name) => matchesLanguage(name) && (!name.country || name.country.toLowerCase() === region))?.vernacularName
-    ?? names.find(matchesLanguage)?.vernacularName
-    ?? names.find((name) => ['en', 'eng'].includes(name.language?.toLowerCase() ?? ''))?.vernacularName
-    ?? names[0]?.vernacularName
+  const humanNames = names.filter((name) => {
+    const value = name.vernacularName.trim()
+    return value.length >= 3 && !/\d/.test(value) && !(value.length <= 7 && value === value.toLocaleUpperCase() && /^[A-Z]+$/.test(value))
+  })
+  return humanNames.find((name) => matchesLanguage(name) && (!name.country || name.country.toLowerCase() === region))?.vernacularName
+    ?? humanNames.find(matchesLanguage)?.vernacularName
+    ?? humanNames.find((name) => ['en', 'eng'].includes(name.language?.toLowerCase() ?? ''))?.vernacularName
+    ?? humanNames[0]?.vernacularName
 }
 
 function commerciallyUsable(license?: string) {
