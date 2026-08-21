@@ -33,7 +33,7 @@ const liveLayers: Array<{ type: SignalType; label: string }> = [
   { type: 'weather', label: 'Severe weather' }, { type: 'space-weather', label: 'Space weather' },
   { type: 'environment', label: 'Environmental events' },
 ]
-const demoLayers: Array<{ type: SignalType; label: string }> = [
+const extendedLayers: Array<{ type: SignalType; label: string }> = [
   { type: 'aircraft', label: 'Aircraft' }, { type: 'satellite', label: 'Satellites' },
   { type: 'media', label: 'Media activity' }, { type: 'infrastructure', label: 'Infrastructure' },
 ]
@@ -58,7 +58,7 @@ export default function SettingsPage(props: Props) {
   const [firmsKey, setFirmsKey] = useState('')
   const [storageUsage, setStorageUsage] = useState<number>()
   const [confirmErase, setConfirmErase] = useState(false)
-  const visibleLayers = props.demoMode ? [...liveLayers, ...demoLayers] : liveLayers
+  const visibleLayers = [...liveLayers, ...extendedLayers]
   const healthy = useMemo(() => Object.values(props.statuses).filter((status) => status.state === 'live').length, [props.statuses])
 
   useEffect(() => {
@@ -88,8 +88,8 @@ export default function SettingsPage(props: Props) {
 
     <section className="settings-group">
       <h2>Signal layers</h2>
-      {visibleLayers.map((layer) => <button key={layer.type} onClick={() => props.onToggle(layer.type)}><span><i className={`type-dot ${layer.type}`}/>{layer.label}{props.demoMode && demoLayers.some((item) => item.type === layer.type) && <small className="demo-layer-label">DEMO</small>}</span><b className={props.layers[layer.type] ? 'toggle on' : 'toggle'} aria-label={props.layers[layer.type] ? 'On' : 'Off'}/></button>)}
-      {!props.demoMode && <p className="setting-note">Simulated aviation, satellite, media, and infrastructure layers stay hidden when Demo Mode is off.</p>}
+      {visibleLayers.map((layer) => <button key={layer.type} onClick={() => props.onToggle(layer.type)}><span><i className={`type-dot ${layer.type}`}/>{layer.label}{props.demoMode && extendedLayers.some((item) => item.type === layer.type) && <small className="demo-layer-label">DEMO</small>}</span><b className={props.layers[layer.type] ? 'toggle on' : 'toggle'} aria-label={props.layers[layer.type] ? 'On' : 'Off'}/></button>)}
+      <p className="setting-note">All normalized Signal categories remain available. A layer with no current provider stays empty instead of fabricating activity.</p>
     </section>
 
     <section className="settings-group">
