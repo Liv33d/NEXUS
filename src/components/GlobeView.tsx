@@ -24,6 +24,7 @@ interface Props {
   qualityMode?: 'automatic' | 'quality' | 'battery'
   initialView?: GeographicView
   onViewChange?(view: GeographicView): void
+  onRequestSolar?(): void
   migration?: MigrationSnapshot
 }
 
@@ -102,11 +103,12 @@ function createEarthMaterial() {
   })
 }
 
-function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, migration }: Props) {
+function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestSolar, migration }: Props) {
   const ref = useRef<GlobeMethods | undefined>(undefined)
   const hostRef = useRef<HTMLDivElement>(null)
   const onReadyRef = useRef(onReady)
   const onViewChangeRef = useRef(onViewChange)
+  const onRequestSolarRef = useRef(onRequestSolar)
   const [size, setSize] = useState({ width: Math.max(1, window.innerWidth), height: Math.max(1, window.innerHeight) })
   const [ready, setReady] = useState(false)
   const [contextLost, setContextLost] = useState(false)
@@ -128,7 +130,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
     return path.length >= 2 ? [{ signal, points: path.map(([lng, lat]) => ({ lat, lng })) }] : []
   }), [signals])
 
-  useEffect(() => { onReadyRef.current = onReady; onViewChangeRef.current = onViewChange }, [onReady, onViewChange])
+  useEffect(() => { onReadyRef.current = onReady; onViewChangeRef.current = onViewChange; onRequestSolarRef.current = onRequestSolar }, [onReady, onRequestSolar, onViewChange])
 
   useEffect(() => {
     const host = hostRef.current
@@ -230,6 +232,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
         return geographicViewsDiffer(normalized, next) ? { lat: next.latitude, lng: next.longitude, altitude: next.altitude } : current
       })
       onViewChangeRef.current?.(next)
+      if (point.altitude >= 3.18) onRequestSolarRef.current?.()
     }
     controls.addEventListener('end', commitView)
     return () => controls.removeEventListener('end', commitView)
@@ -353,6 +356,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       {radarEnabled && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED' : radarStatus === 'live' ? 'NOAA RADAR · 5 MIN' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
       {migration && <div className={`radar-provenance migration ${migration.freshness}`}><i/><span>GBIF BIRDS · {migration.freshness === 'cached' ? 'CACHED' : 'DERIVED 14D SHIFT'}</span></div>}
     </div>
+    {viewpoint.altitude > 2.35 && <div className="space-transition-cue">CONTINUE OUTWARD · SOLAR SYSTEM</div>}
     {contextLost && <div className="map-loading renderer-recovery"><span/><strong>Restoring Earth</strong><small>Graphics context was interrupted</small></div>}
     <div className="globe-vignette" />
   </div>

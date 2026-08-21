@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Bird, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, MonitorUp, Moon, Orbit, RefreshCw, Satellite, Search, SunMedium, X } from 'lucide-react'
+import { Activity, Bird, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, MonitorUp, Moon, RefreshCw, Satellite, Search, SunMedium, X } from 'lucide-react'
 import { BottomNav, TopBar } from './components/Chrome'
 import { CasesPage, DiscoverPage, ObserverPage, SearchPanel, SurpriseButton } from './components/Pages'
 import SettingsPage, { type MapTheme, type PerformanceMode } from './components/SettingsPage'
@@ -92,6 +92,7 @@ export default function App() {
   }, [])
   const handleMapViewChange = useCallback((view: GeographicView) => setGeographicView(clampGeographicView(view)), [])
   const returnToGlobe = useCallback(() => { if (webGLAvailable) setVisualMode('globe') }, [webGLAvailable])
+  const enterSolarSystem = useCallback(() => { setActivePanel(undefined); setEarthDomain('solar') }, [])
 
   useEffect(() => {
     void store.initialize()
@@ -150,7 +151,7 @@ export default function App() {
   const earthContent = useMemo(() => (
     <>
       {visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading geographic detail</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} mapTheme={mapTheme} initialView={geographicView} onViewChange={handleMapViewChange} onRequestGlobe={returnToGlobe} onSelect={selectSignal}/></Suspense> : !webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={selectSignal}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
-        <GlobeView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} lightingMode={lightingMode} batterySaver={performanceMode === 'battery'} qualityMode={performanceMode} autoRotate={autoRotate} atmosphereEnabled={atmosphere} labelsEnabled={labels} initialView={geographicView} onViewChange={handleGlobeViewChange} onSelect={selectSignal} onReady={globeReady} migration={migrationEnabled ? migration : undefined}/>
+        <GlobeView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} lightingMode={lightingMode} batterySaver={performanceMode === 'battery'} qualityMode={performanceMode} autoRotate={autoRotate} atmosphereEnabled={atmosphere} labelsEnabled={labels} initialView={geographicView} onViewChange={handleGlobeViewChange} onRequestSolar={enterSolarSystem} onSelect={selectSignal} onReady={globeReady} migration={migrationEnabled ? migration : undefined}/>
       </Suspense>} 
       <div className="earth-overlay">
         <button className={`world-pulse ${leadDiscovery ? `level-${leadDiscovery.level}` : ''}`} onClick={() => leadDiscovery && store.selectDiscovery(leadDiscovery.id)} disabled={!leadDiscovery}>
@@ -181,7 +182,6 @@ export default function App() {
             </div>
             <div className="domain-grid">
               <button className={`environment-lens migration-lens ${migrationEnabled ? 'active' : ''}`} onClick={() => setMigrationEnabled((enabled) => !enabled)} aria-pressed={migrationEnabled}><Bird/><span><strong>Migration Watch</strong><small>{migrationStatus === 'live' ? `${migration?.recentRecordCount ?? 0} licensed records · ${migration?.corridors.length ?? 0} shifts` : migrationStatus === 'cached' ? `${migration?.recentRecordCount ?? 0} cached records · offline-safe` : migrationStatus === 'error' ? 'GBIF unavailable · no stored sample' : migrationStatus === 'loading' ? 'Resolving licensed observations…' : 'GBIF evidence · privacy aggregated'}</small></span><b>{migrationStatus === 'loading' ? '…' : migrationEnabled ? 'ON' : 'OFF'}</b></button>
-              <button className="environment-lens solar-launch" onClick={() => { setEarthDomain('solar'); setActivePanel(undefined) }}><Orbit/><span><strong>Solar System</strong><small>Real positions · VSOP87 / NOVAS</small></span><b>OPEN</b></button>
             </div>
             <button className={`ambient-toggle ${ambientMode ? 'active' : ''}`} onClick={() => setAmbientMode((enabled) => !enabled)} aria-pressed={ambientMode}><MonitorUp/><span><strong>Ambient Earth</strong><small>Keeps the display awake and hides controls after 12 seconds</small></span><b>{ambientMode ? 'ON' : 'OFF'}</b></button>
             <div className="lens-summary"><strong>{activeLayerCount}</strong><span>active signal layers</span></div>
@@ -195,7 +195,7 @@ export default function App() {
       {selectedSignal && <SignalSheet signal={selectedSignal} onClose={() => store.selectSignal(undefined)}/>} 
       {replayCutoff && <button className="replay-indicator" onClick={() => { setReplayCutoff(undefined); setActivePanel('time') }}><span>REPLAY · {new Date(replayCutoff).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><strong>Return live</strong></button>}
     </>
-  ), [activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, geographicView, globeReady, handleGlobeViewChange, handleMapViewChange, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, migration, migrationEnabled, migrationStatus, performanceMode, radarEnabled, replayCutoff, returnToGlobe, satelliteEnabled, selectSignal, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable, windowSignals])
+  ), [activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, enterSolarSystem, geographicView, globeReady, handleGlobeViewChange, handleMapViewChange, labels, leadDiscovery, lightingMode, liveSourceCount, mapTheme, migration, migrationEnabled, migrationStatus, performanceMode, radarEnabled, replayCutoff, returnToGlobe, satelliteEnabled, selectSignal, selectedSignal, significantCount, store, visibleSignals, visualMode, webGLAvailable, windowSignals])
 
   return (
     <div className={`app-shell ${ambientActive && ambientIdle ? 'ambient-idle' : ''}`}>

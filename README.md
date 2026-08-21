@@ -6,6 +6,8 @@ NEXUS is a mobile-first, privacy-friendly global signal discovery system. It tra
 
 The current release is a working multi-source vertical slice. It includes a NASA-textured interactive globe with astronomical illumination, zoom-aware offline city labels and borders, a detailed MapLibre investigation map, weather imagery, official active-cyclone geometry, live natural-hazard feeds, a privacy-aggregated GBIF Migration Watch, bounded GBIF LIFE context, locally propagated space-station passes, a real-time ephemeris-driven Solar System, Open‑Meteo place context, normalized Signals, H3 Planetary Memory, explainable Pulse deviations, durable Cases and Watches, offline PWA support, provenance, and safe recovery.
 
+Earth is the spatial origin of the experience: zoom inward to transition into geographic detail, or continue outward beyond the full globe to reveal the calculated Solar System. The orbital scene starts at Earth and supports a reverse pinch transition back into the planet.
+
 ## Quick start
 
 ```bash
