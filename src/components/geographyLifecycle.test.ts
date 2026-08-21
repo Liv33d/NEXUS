@@ -16,6 +16,7 @@ describe('geographic renderer lifecycle regression guards', () => {
     expect(map.match(/new MapLibreMap\(/g)).toHaveLength(1)
     expect(map).toContain("getSource('nexus-signals') as GeoJSONSource).setData(collection)")
     expect(map).toContain('new ResizeObserver(resize)')
+    expect(map).toContain('try { map.remove() } catch')
   })
 
   it('passes the same camera state into globe and map', () => {
