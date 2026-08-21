@@ -105,15 +105,6 @@ export default defineConfig({
               expiration: { maxEntries: 180, maxAgeSeconds: 604800 },
               cacheableResponse: { statuses: [0, 200] }
             }
-          },
-          {
-            urlPattern: /^https:\/\/(api|tilecache)\.rainviewer\.com\//,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'nexus-global-radar',
-              expiration: { maxEntries: 96, maxAgeSeconds: 7200 },
-              cacheableResponse: { statuses: [0, 200] }
-            }
           }
         ]
       }
