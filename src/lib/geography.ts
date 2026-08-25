@@ -17,11 +17,11 @@ export function clampGeographicView(view: GeographicView): GeographicView {
 }
 
 export function altitudeToMapZoom(altitude: number): number {
-  return Math.max(0.75, Math.min(16, 3.25 - Math.log2(Math.max(0.08, altitude))))
+  return Math.max(0.75, Math.min(16, 2.557 - Math.log2(Math.max(0.08, altitude))))
 }
 
 export function mapZoomToAltitude(zoom: number): number {
-  return Math.max(0.08, Math.min(3.5, 2 ** (3.25 - Math.max(0.75, Math.min(16, zoom)))))
+  return Math.max(0.08, Math.min(3.5, 2 ** (2.557 - Math.max(0.75, Math.min(16, zoom)))))
 }
 
 export function geographicViewsDiffer(a: GeographicView, b: GeographicView): boolean {

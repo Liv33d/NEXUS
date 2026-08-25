@@ -12,6 +12,16 @@ describe('mobile interaction layout contract', () => {
     expect(styles).not.toMatch(/\.earth-command-rail|\.globe-quick-lenses|\.view-toggle|\.map-mode-switch/)
   })
 
+  it('uses the V2 human navigation and three-detent hero card', () => {
+    const chrome = readFileSync(resolve(process.cwd(), 'src/components/Chrome.tsx'), 'utf8')
+    const inspector = readFileSync(resolve(process.cwd(), 'src/components/IntelligenceInspector.tsx'), 'utf8')
+    expect(chrome).toContain("label: 'Today'")
+    expect(chrome).toContain("label: 'Yours'")
+    expect(chrome).not.toContain("label: 'Observer'")
+    for (const detent of ["'peek'", "'story'", "'full'"]) expect(inspector).toContain(detent)
+    expect(styles).toContain('.nexus-hero-card.detent-story')
+  })
+
   it('exposes coherent Earth domains without presenting unavailable feeds as live', () => {
     for (const label of ['Bird Migration', 'Maritime', 'Flight Activity', 'Animals & Life', 'Orbit']) {
       expect(app).toContain(label)
@@ -31,7 +41,8 @@ describe('mobile interaction layout contract', () => {
     expect(app).not.toContain('onRequestSolar')
     expect(app).not.toContain('enterSolarSystem')
     expect(app).not.toContain('<strong>Solar System</strong>')
-    expect(app).toContain("store.view === 'earth' && earthContent")
+    expect(app).toContain("store.view === 'earth' ? 'active' : ''")
+    expect(app).toContain('>{earthContent}</div>')
   })
 
   it('uses an intentional landscape inspector instead of stacking portrait sheets', () => {

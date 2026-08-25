@@ -1,4 +1,4 @@
-import { Binoculars, Bookmark, CircleUserRound, Compass, Earth, Radar, Settings2, WifiOff } from 'lucide-react'
+import { Bookmark, CircleUserRound, Compass, Earth, Radar, Settings2, WifiOff } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { ViewId } from '../store/useNexusStore'
 
@@ -16,9 +16,8 @@ export function TopBar({ offline, demo, onSettings }: { offline: boolean; demo: 
 
 const items: Array<{ id: ViewId; label: string; icon: ReactNode }> = [
   { id: 'earth', label: 'Earth', icon: <Earth/> },
-  { id: 'discover', label: 'Discover', icon: <Compass/> },
-  { id: 'cases', label: 'Cases', icon: <Bookmark/> },
-  { id: 'observer', label: 'Observer', icon: <Binoculars/> },
+  { id: 'discover', label: 'Today', icon: <Compass/> },
+  { id: 'cases', label: 'Yours', icon: <Bookmark/> },
 ]
 
 export function BottomNav({ view, onChange }: { view: ViewId; onChange(view: ViewId): void }) {

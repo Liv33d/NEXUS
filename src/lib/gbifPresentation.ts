@@ -34,6 +34,11 @@ function commerciallyUsable(license?: string) {
   return value === 'cc0' || value.includes('publicdomain') || value.includes('/zero/') || ((value === 'cc by' || value.startsWith('cc by ') || value.includes('/by/4.0')) && !value.includes('-nc') && !value.includes('-nd'))
 }
 
+function requiresAttribution(license?: string) {
+  const value = license?.toLowerCase() ?? ''
+  return value === 'cc by' || value.startsWith('cc by ') || value.includes('/by/4.0')
+}
+
 export function fetchGbifTaxonPresentation(taxonKey: number, fallbackUrl: string, signal?: AbortSignal): Promise<TaxonPresentation> {
   const cached = cache.get(taxonKey)
   if (cached) return cached
@@ -50,8 +55,11 @@ export function fetchGbifTaxonPresentation(taxonKey: number, fallbackUrl: string
     }
     let media: TaxonMedia | undefined
     if (mediaResponse.ok) {
-      const item = mediaSchema.parse(await mediaResponse.json()).results.find((candidate) => candidate.type === 'StillImage' && candidate.format?.startsWith('image/') && commerciallyUsable(candidate.license))
-      if (item) media = { url: item.identifier, creator: item.creator ?? item.rightsHolder ?? 'Unknown creator', license: item.license!, source: item.source ?? 'GBIF species media', sourceUrl: item.references ?? fallbackUrl }
+      const item = mediaSchema.parse(await mediaResponse.json()).results.find((candidate) => {
+        const creator = candidate.creator?.trim() || candidate.rightsHolder?.trim()
+        return candidate.type === 'StillImage' && candidate.format?.startsWith('image/') && commerciallyUsable(candidate.license) && (!requiresAttribution(candidate.license) || Boolean(creator))
+      })
+      if (item) media = { url: item.identifier, creator: item.creator?.trim() || item.rightsHolder?.trim() || 'Public domain', license: item.license!, source: item.source ?? 'GBIF species media', sourceUrl: item.references ?? fallbackUrl }
     }
     return { commonName, media }
   })().catch((): TaxonPresentation => ({}))

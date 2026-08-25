@@ -19,7 +19,7 @@ describe('globe visual stability contract', () => {
   it('does not pretend a full-colour Earth image is a cloud mask', () => {
     expect(globe).not.toContain('nasaObservedCloudImage')
     expect(globe).not.toContain('cloudTexture')
-    expect(app).toContain('detailed map only')
+    expect(app).toContain('Recent GOES imagery · regional coverage')
   })
 
   it('never requests an absent city-light texture from the PWA shell', () => {
@@ -55,7 +55,7 @@ describe('globe visual stability contract', () => {
     expect(globe).toContain('onLabelClick=')
     expect(globe).toContain('visibleMigrationCorridors')
     expect(app).toContain('<IntelligenceInspector')
-    expect(app).toContain('placeToIntelligence(city)')
+    expect(app).toContain('searchedPlaceToIntelligence(place)')
     expect(globe).toContain('onPathClick=')
   })
 
@@ -80,7 +80,7 @@ describe('globe visual stability contract', () => {
   })
 
   it('never starts a WebGL map when WebGL2 is unavailable', () => {
-    expect(app).toMatch(/\{!webGLAvailable \? <AccessibleEarthFallback[\s\S]+: visualMode === 'map' \? <Suspense/)
-    expect(app).not.toMatch(/\{visualMode === 'map' \?[\s\S]+: !webGLAvailable \? <AccessibleEarthFallback/)
+    expect(app).toMatch(/\{!webGLAvailable \? <AccessibleEarthFallback[\s\S]+: <Suspense/)
+    expect(app).not.toContain("visualMode === 'map'")
   })
 })

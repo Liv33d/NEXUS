@@ -21,11 +21,11 @@ describe('geographic renderer lifecycle regression guards', () => {
     expect(map).not.toContain("removeWeatherSource(map, 'nexus-radar')\n    removeWeatherSource(map, 'nexus-satellite')")
   })
 
-  it('passes the same camera state into globe and map', () => {
+  it('passes camera state into the single Earth renderer', () => {
     const app = source('../App.tsx')
-    expect(app.match(/initialView=\{geographicView\}/g)).toHaveLength(2)
-    expect(app).toContain('onViewChange={handleGlobeViewChange}')
+    expect(app.match(/initialView=\{geographicView\}/g)).toHaveLength(1)
     expect(app).toContain('onViewChange={handleMapViewChange}')
+    expect(app).not.toContain('GlobeView')
   })
 
   it('uses a single automatic Earth surface instead of competing mode controls', () => {
@@ -34,8 +34,9 @@ describe('geographic renderer lifecycle regression guards', () => {
     expect(app).not.toContain('view-toggle')
     expect(app).not.toContain('globe-quick-lenses')
     expect(map).not.toContain('map-mode-switch')
-    expect(app).toContain('shouldEnterDetailedMap(next)')
-    expect(source('./ConnectedMapView.tsx')).toContain('shouldReturnToGlobe(map.getZoom())')
+    expect(app).not.toContain('visualMode')
+    expect(source('./ConnectedMapView.tsx')).toContain("map.setProjection({ type: 'globe' })")
+    expect(source('./ConnectedMapView.tsx')).not.toContain('shouldReturnToGlobe')
   })
 
   it('keeps Earth zoom isolated from the preserved Space prototype', () => {

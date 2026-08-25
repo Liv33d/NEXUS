@@ -1,4 +1,4 @@
-import { Activity, BatteryLow, Database, ExternalLink, Gauge, Globe2, KeyRound, Layers3, RefreshCw, Rotate3D, ShieldCheck, Sparkles, Trash2, Type } from 'lucide-react'
+import { Activity, BatteryLow, Database, ExternalLink, Gauge, KeyRound, Layers3, RefreshCw, ShieldCheck, Sparkles, Trash2, Type } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { providerById } from '../providers/registry'
 import type { ProviderStatus, SignalType } from '../types/signal'
@@ -13,9 +13,6 @@ interface Props {
   demoMode: boolean
   firmsConfigured: boolean
   performanceMode: PerformanceMode
-  autoRotate: boolean
-  atmosphere: boolean
-  labels: boolean
   mapTheme: MapTheme
   informationDensity: InformationDensity
   onToggle(type: SignalType): void
@@ -23,9 +20,6 @@ interface Props {
   onFirmsKey(key: string): Promise<void>
   onRefresh(): Promise<void>
   onPerformance(mode: PerformanceMode): void
-  onAutoRotate(enabled: boolean): void
-  onAtmosphere(enabled: boolean): void
-  onLabels(enabled: boolean): void
   onMapTheme(theme: MapTheme): void
   onInformationDensity(density: InformationDensity): void
   onErase(): Promise<void>
@@ -90,11 +84,8 @@ export default function SettingsPage(props: Props) {
       <div className="settings-segment" role="group" aria-label="Performance mode">
         {(['automatic', 'quality', 'battery'] as const).map((mode) => <button key={mode} className={props.performanceMode === mode ? 'active' : ''} onClick={() => props.onPerformance(mode)}>{mode === 'automatic' ? <Gauge/> : mode === 'quality' ? <Sparkles/> : <BatteryLow/>}<span>{mode}</span></button>)}
       </div>
-      <button onClick={() => props.onAutoRotate(!props.autoRotate)}><span><Rotate3D/>Automatic rotation</span><b className={props.autoRotate ? 'toggle on' : 'toggle'} aria-label={props.autoRotate ? 'On' : 'Off'}/></button>
-      <button onClick={() => props.onAtmosphere(!props.atmosphere)}><span><Globe2/>Atmospheric glow</span><b className={props.atmosphere ? 'toggle on' : 'toggle'} aria-label={props.atmosphere ? 'On' : 'Off'}/></button>
-      <button onClick={() => props.onLabels(!props.labels)}><span><Type/>Geographic labels</span><b className={props.labels ? 'toggle on' : 'toggle'} aria-label={props.labels ? 'On' : 'Off'}/></button>
       <div className="settings-choice"><span><Layers3/>Detailed map style</span><div><button className={props.mapTheme === 'dark' ? 'active' : ''} onClick={() => props.onMapTheme('dark')}>Dark</button><button className={props.mapTheme === 'street' ? 'active' : ''} onClick={() => props.onMapTheme('street')}>Street</button></div></div>
-      <p className="setting-note">Automatic balances sharpness and battery life. Battery mode reduces globe resolution, animation, and environmental overlays.</p>
+      <p className="setting-note">Automatic balances sharpness and battery life. Renderer styling remains consistent across the globe and detailed map.</p>
     </section>
 
     <details className="settings-advanced">

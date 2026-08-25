@@ -13,6 +13,7 @@ import type { LifeGlobeSnapshot } from '../lib/lifeGlobe'
 interface Props {
   signals: Signal[]
   selected?: Signal
+  focusLocation?: { latitude: number; longitude: number }
   onSelect(signal: Signal): void
   onSelectSignalCluster?(signals: Signal[], location: { latitude: number; longitude: number }): void
   onSelectMigration?(corridor: MigrationSnapshot['corridors'][number]): void
@@ -40,7 +41,7 @@ const colors: Record<Signal['type'], string> = {
   'space-weather': '#d6a4ff', media: '#f2da87', environment: '#74d9a1', infrastructure: '#c7d0d0',
 }
 
-function AtlasMapView({ signals, selected, onSelect, onSelectMigration, onSelectLife, onSelectEcologicalCell, radarEnabled = false, satelliteEnabled = false, migration, life }: Props) {
+function AtlasMapView({ signals, selected, focusLocation, onSelect, onSelectMigration, onSelectLife, onSelectEcologicalCell, radarEnabled = false, satelliteEnabled = false, migration, life }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const gesture = useRef<{ distance?: number; camera: Camera }>({ camera: initialCamera })
@@ -73,11 +74,12 @@ function AtlasMapView({ signals, selected, onSelect, onSelectMigration, onSelect
   }, [])
 
   useEffect(() => {
-    if (!selected?.location) return
-    const [pointX, pointY] = atlasProject(selected.location.longitude, selected.location.latitude)
+    const location = focusLocation ?? selected?.location
+    if (!location) return
+    const [pointX, pointY] = atlasProject(location.longitude, location.latitude)
     const scale = 2.8
     setCamera({ scale, x: WIDTH / 2 - pointX * scale, y: HEIGHT / 2 - pointY * scale })
-  }, [selected])
+  }, [focusLocation, selected])
 
   const zoom = (factor: number) => setCamera((current) => {
     const scale = Math.max(1, Math.min(7, current.scale * factor))
@@ -142,7 +144,7 @@ function AtlasMapView({ signals, selected, onSelect, onSelectMigration, onSelect
       </g>
     </svg>
     {!world.length && !loadFailed && <div className="map-loading"><span/><strong>Loading onboard geography</strong></div>}
-    {loadFailed && <div className="map-error"><strong>Onboard geography unavailable</strong><span>Signals remain available in Discover and Observer.</span></div>}
+    {loadFailed && <div className="map-error"><strong>Onboard geography unavailable</strong><span>Current evidence remains available in Earth Today and Your Earth.</span></div>}
     <div className="atlas-status"><span>{radarEnabled ? radarStatus === 'live' ? 'NOAA MRMS · RETRIEVED' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING RADAR' : satelliteEnabled ? 'CLOUDS REQUIRE DETAIL MAP' : 'ONBOARD ATLAS'}</span><small>{radarEnabled ? `US domains · ${environmentalLayerStamp('radar', layerReference).ageMinutes}m retrieval age` : satelliteEnabled ? 'Offline atlas suppresses unregistered imagery' : `${points.length} prioritized · ${signals.length} available`}</small></div>
     <div className="atlas-controls" role="group" aria-label="Map controls"><button onClick={(event) => { event.stopPropagation(); zoom(1.55) }} aria-label="Zoom in"><Plus/></button><button onClick={(event) => { event.stopPropagation(); zoom(1 / 1.55) }} aria-label="Zoom out"><Minus/></button><button onClick={(event) => { event.stopPropagation(); setCamera(initialCamera) }} aria-label="Show whole world"><LocateFixed/></button></div>
   </div>
@@ -150,8 +152,17 @@ function AtlasMapView({ signals, selected, onSelect, onSelectMigration, onSelect
 
 export default function MapView(props: Props) {
   const [mode, setMode] = useState<'detail' | 'atlas'>(() => navigator.onLine ? 'detail' : 'atlas')
-  const fallback = useCallback(() => setMode('atlas'), [])
+  const [detailAttempt, setDetailAttempt] = useState(0)
+  const [detailFailures, setDetailFailures] = useState(0)
+  const fallback = useCallback(() => { setDetailFailures((failures) => failures + 1); setMode('atlas') }, [])
+  useEffect(() => {
+    if (mode !== 'atlas') return
+    const recover = () => { setDetailFailures(0); setDetailAttempt((attempt) => attempt + 1); setMode('detail') }
+    window.addEventListener('online', recover)
+    const retry = navigator.onLine && detailFailures === 1 ? window.setTimeout(() => { setDetailAttempt((attempt) => attempt + 1); setMode('detail') }, 20_000) : undefined
+    return () => { window.removeEventListener('online', recover); if (retry !== undefined) window.clearTimeout(retry) }
+  }, [detailFailures, mode])
   return mode === 'detail'
-    ? <ConnectedMapView key={props.mapTheme ?? 'dark'} {...props} onFallback={fallback}/>
+    ? <ConnectedMapView key={detailAttempt} {...props} onFallback={fallback}/>
     : <AtlasMapView {...props}/>
 }

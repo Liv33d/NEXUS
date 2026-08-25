@@ -305,3 +305,66 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 }
 @keyframes landscape-sheet-in { from { transform:translateX(105%) } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important } }
+
+/* NEXUS V2: one spatial canvas and one editorial intelligence surface. */
+.earth-scene-v2 { background:radial-gradient(circle at 50% 42%,#12313b 0,#06151b 42%,#010507 76%) }
+.earth-route { position:fixed;inset:0;visibility:hidden;pointer-events:none }
+.earth-route.active { visibility:visible;pointer-events:auto }
+.earth-scene-v2 .maplibregl-canvas { outline:0 }
+.earth-scene-v2 .maplibregl-ctrl-logo { opacity:.58 }
+.earth-overlay { padding-top:0;pointer-events:none }
+.earth-tools-button { top:4px;right:14px;width:50px;height:50px;border-radius:25px;background:rgba(5,10,12,.68) }
+.earth-tools-button span { font-size:11px }
+.world-pulse { width:min(calc(100% - 68px),360px);min-height:54px;padding:10px 13px;border-radius:18px }
+.world-pulse>span,.world-pulse>small { font-size:11px }.world-pulse>strong { margin-top:6px;font-size:14px }
+.domain-focus-card,.earth-bottom { display:none!important }
+.bottom-nav { left:50%;right:auto;width:min(360px,calc(100% - 20px));grid-template-columns:repeat(3,1fr);transform:translateX(-50%);height:64px;border-radius:24px }
+.bottom-nav button { min-height:52px;font-size:11px }
+.bottom-nav svg { width:21px;height:21px }
+.connected-map-status { left:auto;right:14px;bottom:calc(86px + env(safe-area-inset-bottom));padding:8px 11px;border:0;border-radius:14px;background:rgba(3,9,11,.66);text-align:right }
+.connected-map-status span,.connected-map-status small { font-size:11px;line-height:1.2 }
+
+.nexus-hero-card { transition:max-height .28s cubic-bezier(.2,.8,.2,1),transform .28s cubic-bezier(.2,.8,.2,1) }
+.nexus-hero-card.detent-peek { max-height:172px }
+.nexus-hero-card.detent-story { max-height:min(56dvh,560px);overflow-y:auto;overscroll-behavior:contain }
+.nexus-hero-card.detent-full { max-height:92dvh;overflow-y:auto;overscroll-behavior:contain }
+.nexus-hero-card.detent-peek .intelligence-hero { position:absolute;z-index:1;top:37px;left:16px;width:92px;height:112px;border-radius:18px }
+.nexus-hero-card.detent-peek .intelligence-hero>span,.nexus-hero-card.detent-peek .media-tabs { display:none }
+.nexus-hero-card.detent-peek .intelligence-content { min-height:160px;padding:35px 48px 14px 124px }
+.nexus-hero-card.detent-peek .intelligence-eyebrow { white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.nexus-hero-card.detent-peek .intelligence-content h2 { margin-top:7px;font-size:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.nexus-hero-card.detent-peek .scientific-name,.nexus-hero-card.detent-peek .intelligence-subtitle,.nexus-hero-card.detent-peek .hero-key-facts,.nexus-hero-card.detent-peek .intelligence-actions,.nexus-hero-card.detent-peek .intelligence-expanded { display:none }
+.nexus-hero-card.detent-peek .intelligence-summary { margin-top:8px;display:-webkit-box;overflow:hidden;font-size:13px;line-height:1.35;-webkit-line-clamp:2;-webkit-box-orient:vertical }
+.nexus-hero-card.detent-story .intelligence-expanded,.nexus-hero-card.detent-full .intelligence-expanded { display:block }
+.nexus-hero-card.detent-story .technical-details,.nexus-hero-card.detent-story .source-link,.nexus-hero-card.detent-story .related-intelligence { display:none }
+.nexus-hero-card.detent-full .details-action svg { transform:rotate(180deg) }
+.intelligence-hero { height:180px }
+.intelligence-hero-fallback { background:radial-gradient(circle at 73% 22%,color-mix(in srgb,var(--domain) 35%,transparent),transparent 36%),linear-gradient(145deg,color-mix(in srgb,var(--domain) 12%,#0a171a),#030708) }
+.intelligence-hero-fallback>i { position:absolute;right:12%;top:18%;width:90px;height:90px;border:1px solid color-mix(in srgb,var(--domain) 34%,transparent);border-radius:50%;box-shadow:0 0 60px color-mix(in srgb,var(--domain) 20%,transparent);animation:v2-breathe 2.8s ease-in-out infinite }
+@keyframes v2-breathe { 50% { transform:scale(1.08);opacity:.56 } }
+.intelligence-hero>span,.intelligence-eyebrow,.intelligence-subtitle { font-size:11px }
+.intelligence-content { padding:16px 18px 24px }
+.intelligence-content h2 { font-size:clamp(28px,8vw,38px) }
+.scientific-name { font-size:14px }
+.intelligence-summary { font-size:15px;line-height:1.5 }
+.hero-key-facts { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin-top:16px;overflow:hidden;border-radius:15px;background:rgba(255,255,255,.06) }
+.hero-key-facts>span { min-width:0;padding:12px;background:#091112 }
+.hero-key-facts small,.hero-key-facts strong { display:block;overflow:hidden;text-overflow:ellipsis }
+.hero-key-facts small { color:#7f908e;font-size:11px;white-space:nowrap }.hero-key-facts strong { margin-top:6px;color:#edf4f3;font-size:13px;line-height:1.2 }
+.intelligence-actions button { min-height:46px;font-size:12px }
+.intelligence-answer>span,.movement-story>span,.related-intelligence>span { font-size:11px }
+.intelligence-answer>p,.movement-story>p { font-size:15px;line-height:1.55 }
+.movement-story strong,.related-intelligence button strong { font-size:13px }.related-intelligence button small { font-size:11px }
+.technical-details summary,.technical-facts span,.methodology-copy,.provenance,.media-license,.source-link,.location-row { font-size:12px }
+.app-shell:has(.intelligence-inspector) .bottom-nav { opacity:0;pointer-events:none;transform:translate(-50%,16px) }
+
+@media (orientation:landscape) and (max-height:620px) {
+  .intelligence-inspector,.intelligence-inspector.detent-peek,.intelligence-inspector.detent-story,.intelligence-inspector.detent-full { top:calc(52px + env(safe-area-inset-top));right:max(8px,env(safe-area-inset-right));bottom:8px;left:auto;width:min(380px,38vw);max-height:none;overflow-y:auto;border-radius:24px }
+  .intelligence-inspector .inspector-drag-handle { display:none }
+  .nexus-hero-card.detent-peek .intelligence-hero,.nexus-hero-card.detent-story .intelligence-hero,.nexus-hero-card.detent-full .intelligence-hero { position:relative;top:auto;left:auto;width:100%;height:132px;border-radius:0 }
+  .nexus-hero-card.detent-peek .intelligence-content,.nexus-hero-card.detent-story .intelligence-content,.nexus-hero-card.detent-full .intelligence-content { min-height:0;padding:14px 16px 22px }
+  .nexus-hero-card.detent-peek .scientific-name,.nexus-hero-card.detent-peek .intelligence-subtitle { display:block }
+  .nexus-hero-card.detent-peek .hero-key-facts,.nexus-hero-card.detent-peek .intelligence-actions { display:grid }
+  .nexus-hero-card.detent-peek .intelligence-expanded { display:none }
+  .intelligence-content h2 { font-size:26px }.intelligence-summary { font-size:13px }
+}
