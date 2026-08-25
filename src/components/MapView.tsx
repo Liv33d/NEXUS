@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson'
 import { ATLAS_HEIGHT as HEIGHT, ATLAS_WIDTH as WIDTH, atlasGeometryPath, atlasProject, prioritizeAtlasSignals } from '../lib/atlas'
 import { sanitizeAreaGeometry } from '../lib/geospatial'
-import { environmentalLayerStamp, noaaRadarImage } from '../lib/mapLayers'
+import { noaaRadarImage } from '../lib/mapLayers'
 import type { Signal } from '../types/signal'
 import ConnectedMapView from './ConnectedMapView'
 import type { GeographicView } from '../lib/geography'
@@ -28,6 +28,8 @@ interface Props {
   onRequestGlobe?(): void
   migration?: MigrationSnapshot
   life?: LifeGlobeSnapshot
+  active?: boolean
+  environmentalTime?: number
 }
 
 type WorldFeature = Feature<Polygon | MultiPolygon>
@@ -41,7 +43,7 @@ const colors: Record<Signal['type'], string> = {
   'space-weather': '#d6a4ff', media: '#f2da87', environment: '#74d9a1', infrastructure: '#c7d0d0',
 }
 
-function AtlasMapView({ signals, selected, focusLocation, onSelect, onSelectMigration, onSelectLife, onSelectEcologicalCell, radarEnabled = false, satelliteEnabled = false, migration, life }: Props) {
+function AtlasMapView({ signals, selected, focusLocation, onSelect, onSelectMigration, onSelectLife, onSelectEcologicalCell, radarEnabled = false, satelliteEnabled = false, migration, life, environmentalTime }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const gesture = useRef<{ distance?: number; camera: Camera }>({ camera: initialCamera })
@@ -49,8 +51,9 @@ function AtlasMapView({ signals, selected, focusLocation, onSelect, onSelectMigr
   const [loadFailed, setLoadFailed] = useState(false)
   const [camera, setCamera] = useState<Camera>(initialCamera)
   const [radarStatus, setRadarStatus] = useState<'loading' | 'live' | 'error'>('loading')
+  const [radarLoadedAt, setRadarLoadedAt] = useState<number>()
   const radarUrl = useMemo(() => noaaRadarImage(), [])
-  const layerReference = useMemo(() => Date.now(), [])
+  const historical = environmentalTime !== undefined && environmentalTime < Date.now() - 15 * 60_000
   const areas = useMemo(() => signals.flatMap((signal) => {
     const geometry = sanitizeAreaGeometry(signal.geometry)
     return geometry ? [{ signal, path: atlasGeometryPath(geometry) }] : []
@@ -132,7 +135,7 @@ function AtlasMapView({ signals, selected, focusLocation, onSelect, onSelectMigr
       <g transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`}>
         <g className="atlas-grid">{[-120,-60,0,60,120].map((longitude) => { const [x] = atlasProject(longitude, 0); return <line key={`lng-${longitude}`} x1={x} x2={x} y1="0" y2={HEIGHT}/> })}{[-60,-30,0,30,60].map((latitude) => { const [,y] = atlasProject(0, latitude); return <line key={`lat-${latitude}`} x1="0" x2={WIDTH} y1={y} y2={y}/> })}</g>
         <g className="atlas-land">{world.map((feature, index) => <path key={`${typeof feature.properties?.name === 'string' ? feature.properties.name : 'land'}-${index}`} d={atlasGeometryPath(feature.geometry)}/>)}</g>
-        {radarEnabled && <image className="atlas-radar" href={radarUrl} x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="none" onLoad={() => setRadarStatus('live')} onError={() => setRadarStatus('error')}/>} 
+        {radarEnabled && !historical && <image className="atlas-radar" href={radarUrl} x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="none" onLoad={() => { setRadarLoadedAt(Date.now()); setRadarStatus('live') }} onError={() => setRadarStatus('error')}/>}
         <g className="atlas-life-density">{[
           ...(migration?.cells ?? []).map((cell) => ({ ...cell, domain: 'migration' as const })),
           ...(life?.cells ?? []).map((cell) => ({ ...cell, domain: 'life' as const })),
@@ -145,7 +148,7 @@ function AtlasMapView({ signals, selected, focusLocation, onSelect, onSelectMigr
     </svg>
     {!world.length && !loadFailed && <div className="map-loading"><span/><strong>Loading onboard geography</strong></div>}
     {loadFailed && <div className="map-error"><strong>Onboard geography unavailable</strong><span>Current evidence remains available in Earth Today and Your Earth.</span></div>}
-    <div className="atlas-status"><span>{radarEnabled ? radarStatus === 'live' ? 'NOAA MRMS · RETRIEVED' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING RADAR' : satelliteEnabled ? 'CLOUDS REQUIRE DETAIL MAP' : 'ONBOARD ATLAS'}</span><small>{radarEnabled ? `US domains · ${environmentalLayerStamp('radar', layerReference).ageMinutes}m retrieval age` : satelliteEnabled ? 'Offline atlas suppresses unregistered imagery' : `${points.length} prioritized · ${signals.length} available`}</small></div>
+    <div className="atlas-status"><span>{historical && radarEnabled ? 'RADAR HISTORY UNAVAILABLE' : radarEnabled ? radarStatus === 'live' ? 'NOAA RADAR · LATEST AVAILABLE' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING RADAR' : satelliteEnabled ? 'SATELLITE IMAGERY REQUIRES DETAIL MAP' : 'ONBOARD ATLAS'}</span><small>{historical && radarEnabled ? 'Return to Now to view current radar' : radarEnabled ? radarLoadedAt ? `Coverage varies · refreshed ${new Date(radarLoadedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Coverage varies · waiting for imagery' : satelliteEnabled ? 'Offline atlas suppresses dynamic imagery' : `${points.length} prioritized · ${signals.length} available`}</small></div>
     <div className="atlas-controls" role="group" aria-label="Map controls"><button onClick={(event) => { event.stopPropagation(); zoom(1.55) }} aria-label="Zoom in"><Plus/></button><button onClick={(event) => { event.stopPropagation(); zoom(1 / 1.55) }} aria-label="Zoom out"><Minus/></button><button onClick={(event) => { event.stopPropagation(); setCamera(initialCamera) }} aria-label="Show whole world"><LocateFixed/></button></div>
   </div>
 }

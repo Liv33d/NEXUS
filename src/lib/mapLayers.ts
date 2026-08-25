@@ -66,12 +66,13 @@ export function worldGridGeoJSON(): FeatureCollection<LineString> {
 
 const NOAA_RADAR_EXPORT = 'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity/MapServer/export'
 const NOAA_GEOCOLOR_EXPORT = 'https://satellitemaps.nesdis.noaa.gov/arcgis/rest/services/MERGED_GeoColor/ImageServer/exportImage'
-export const RADAR_FRAME_STEP_MS = 10 * 60_000
+export const ENVIRONMENTAL_REFRESH_MS = { radar: 5 * 60_000, satellite: 10 * 60_000 } as const
 
-export function radarFrames(reference = Date.now(), count = 10): number[] {
-  const safeCount = Math.max(1, Math.min(25, Math.floor(count)))
-  const latest = Math.floor((reference - RADAR_FRAME_STEP_MS) / RADAR_FRAME_STEP_MS) * RADAR_FRAME_STEP_MS
-  return Array.from({ length: safeCount }, (_, index) => latest - (safeCount - index - 1) * RADAR_FRAME_STEP_MS)
+/** Stable frame keys prevent a visible raster reload unless a provider's
+ * documented refresh window has actually advanced. */
+export function environmentalFrameReference(layer: keyof typeof ENVIRONMENTAL_REFRESH_MS, reference = Date.now()) {
+  const cadence = ENVIRONMENTAL_REFRESH_MS[layer]
+  return Math.floor(reference / cadence) * cadence
 }
 
 /**
@@ -119,12 +120,12 @@ export function noaaGeoColorImage(reference = Date.now(), width = 2048, height =
  * the antimeridian.
  */
 export function noaaRadarTileTemplate(reference = Date.now()) {
-  const cacheToken = Math.floor(reference / (5 * 60_000))
+  const cacheToken = environmentalFrameReference('radar', reference) / ENVIRONMENTAL_REFRESH_MS.radar
   return `${NOAA_RADAR_EXPORT}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&dpi=96&format=png32&transparent=true&layers=show:3&f=image&v=${cacheToken}`
 }
 
 export function noaaGeoColorTileTemplate(reference = Date.now()) {
-  const cacheToken = Math.floor(reference / (10 * 60_000))
+  const cacheToken = environmentalFrameReference('satellite', reference) / ENVIRONMENTAL_REFRESH_MS.satellite
   return `${NOAA_GEOCOLOR_EXPORT}?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&interpolation=RSP_BilinearInterpolation&f=image&v=${cacheToken}`
 }
 
@@ -134,6 +135,13 @@ export function previousUtcDate(reference = Date.now()) {
 
 export function nasaTrueColorTiles(reference = Date.now()) {
   return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${previousUtcDate(reference)}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`
+}
+
+/** Exact UTC daily observation requested by historical replay. Unlike the
+ * latest-complete helper above, this must never silently shift the chosen day. */
+export function nasaTrueColorTilesForDate(reference: number) {
+  const date = new Date(reference).toISOString().slice(0, 10)
+  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`
 }
 
 /**
@@ -158,13 +166,10 @@ export interface EnvironmentalLayerStamp {
 }
 
 export function environmentalLayerStamp(layer: 'radar' | 'satellite', reference = Date.now()): EnvironmentalLayerStamp {
-  if (layer === 'satellite') {
-    const timestamp = Date.parse(`${previousUtcDate(reference)}T23:59:59Z`)
-    return { timestamp, kind: 'observed', ageMinutes: Math.max(0, Math.floor((reference - timestamp) / 60_000)) }
-  }
-  // NOAA's public MRMS MapServer is current but explicitly not time-enabled.
-  // We can truthfully expose retrieval freshness, not invent an observation time.
-  const timestamp = Math.floor(reference / (5 * 60_000)) * 5 * 60_000
+  // Both rendered NOAA services expose their latest product rather than a
+  // selectable observation time. NEXUS can truthfully state when it refreshed
+  // the image, but must not manufacture a sensor timestamp.
+  const timestamp = environmentalFrameReference(layer, reference)
   return { timestamp, kind: 'retrieved', ageMinutes: Math.max(0, Math.floor((reference - timestamp) / 60_000)) }
 }
 
@@ -176,9 +181,9 @@ export const environmentalLayers = {
     attribution: 'Radar: NOAA/NWS MRMS',
   },
   satellite: {
-    label: 'NASA GIBS VIIRS observed true colour',
-    freshness: 'Previous completed UTC day; observational imagery, not a forecast',
-    coverage: 'Global daily composite',
-    attribution: 'Imagery: NASA EOSDIS GIBS / VIIRS',
+    label: 'NOAA/NESDIS merged GOES GeoColor',
+    freshness: 'Latest image exposed by NOAA; approximately 10-minute NEXUS refresh',
+    coverage: 'GOES-East and GOES-West domains; not global',
+    attribution: 'Imagery: NOAA/NESDIS',
   },
 } as const

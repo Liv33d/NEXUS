@@ -86,14 +86,13 @@ interface BirdRecord {
   license?: string
 }
 
-function isPermissiveLicense(value?: string): boolean {
+function isPublicDomainLicense(value?: string): boolean {
   const license = value?.toLowerCase() ?? ''
-  return license.includes('publicdomain') || license.includes('/zero/') || license === 'cc0' ||
-    ((license.includes('/by/') || license === 'cc by') && !license.includes('by-nc'))
+  return license.includes('publicdomain') || license.includes('/zero/') || license === 'cc0' || license === 'cc0_1_0'
 }
 
 function usable(record: BirdRecord): boolean {
-  return isPermissiveLicense(record.license) && (record.coordinateUncertaintyInMeters ?? 0) <= 50_000 &&
+  return isPublicDomainLicense(record.license) && (record.coordinateUncertaintyInMeters ?? 0) <= 50_000 &&
     Boolean(record.speciesKey && (record.species || record.scientificName))
 }
 
@@ -206,7 +205,7 @@ export function buildMigrationSnapshot(recentInput: BirdRecord[], priorInput: Bi
     recentWindow: { start: now - 14 * day, end: now },
     priorWindow: { start: now - 28 * day, end: now - 14 * day },
     sourceUrl: 'https://www.gbif.org/occurrence/search?taxon_key=212',
-    methodology: 'Recent CC0/CC BY bird occurrence records are aggregated to coarse H3 cells. Animated corridors show changes in species observation centroids between two 14-day samples; they are derived sampling signals, not forecasts, abundance estimates, or tracks of individual birds.',
+    methodology: 'Recent CC0 bird occurrence records are aggregated to coarse H3 cells. CC BY occurrence aggregates remain excluded until dataset-level credits are preserved. Animated corridors show changes in species observation centroids between two 14-day samples; they are derived sampling signals, not forecasts, abundance estimates, or tracks of individual birds.',
     freshness: 'live',
   }
 }
@@ -228,7 +227,6 @@ async function fetchWindowPage(start: number, end: number, offset: number, signa
   // Filter server-side so a page dominated by noncommercial records does not
   // collapse the visualization after local license governance is applied.
   params.append('license', 'CC0_1_0')
-  params.append('license', 'CC_BY_4_0')
   const response = await fetchWithTimeout(`https://api.gbif.org/v1/occurrence/search?${params}`, { signal }, 12_000)
   if (!response.ok) throw providerHttpError(response, 'gbif-migration')
   return occurrenceSchema.parse(await response.json()).results

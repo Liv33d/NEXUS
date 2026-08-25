@@ -19,7 +19,7 @@ describe('globe visual stability contract', () => {
   it('does not pretend a full-colour Earth image is a cloud mask', () => {
     expect(globe).not.toContain('nasaObservedCloudImage')
     expect(globe).not.toContain('cloudTexture')
-    expect(app).toContain('Recent GOES imagery · regional coverage')
+    expect(app).toContain('Latest GOES GeoColor · regional coverage')
   })
 
   it('never requests an absent city-light texture from the PWA shell', () => {
@@ -41,7 +41,7 @@ describe('globe visual stability contract', () => {
     expect(globe).toContain('id: `migration-${cell.id}`')
     expect(globe).toContain("color: '#a4ffcc'")
     expect(migration).toContain("params.append('license', 'CC0_1_0')")
-    expect(migration).toContain("params.append('license', 'CC_BY_4_0')")
+    expect(migration).not.toContain("params.append('license', 'CC_BY_4_0')")
     expect(app).toContain('migrationFocus.distanceKm.toLocaleString()')
     expect(app).toContain('migrationFocus.direction')
     expect(app).toContain('corridor.commonName ?? corridor.species')
@@ -62,7 +62,7 @@ describe('globe visual stability contract', () => {
   it('opens Animals and Life on Earth with licensed biodiversity context', () => {
     expect(app).toContain('enableLayerCollection(layerPresets.life)')
     expect(app).not.toMatch(/lens === 'animals'[\s\S]{0,500}store\.setView\('observer'\)/)
-    expect(app).toContain('life={lifeEnabled ? life : undefined}')
+    expect(app).toContain('life={lifeEnabled && !replayCutoff ? life : undefined}')
     expect(life).toContain("params.append('license', 'CC0_1_0')")
     expect(life).toContain('coarse H3 cells')
   })

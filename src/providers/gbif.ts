@@ -40,10 +40,9 @@ export interface LifeContext {
 
 const lifeCache = new Map<string, LifeContext>()
 
-function permissiveLicense(value?: string): LifeTaxonSummary['license'] | undefined {
+function publicDomainLicense(value?: string): LifeTaxonSummary['license'] | undefined {
   const license = value?.toLowerCase() ?? ''
   if (license.includes('publicdomain') || license.includes('/zero/') || license === 'cc0') return 'CC0'
-  if ((license.includes('/by/') || license === 'cc by') && !license.includes('by-nc')) return 'CC BY'
   return undefined
 }
 
@@ -72,7 +71,7 @@ export async function fetchLifeContext(latitude: number, longitude: number, sign
   const payload = occurrenceSchema.parse(await response.json())
   const taxa = new Map<string, LifeTaxonSummary>()
   for (const record of payload.results) {
-    const license = permissiveLicense(record.license)
+    const license = publicDomainLicense(record.license)
     const scientificName = record.species ?? record.scientificName
     if (!license || !scientificName || (record.coordinateUncertaintyInMeters ?? 0) > 50_000) continue
     const key = scientificName.toLocaleLowerCase()
@@ -96,7 +95,7 @@ export async function fetchLifeContext(latitude: number, longitude: number, sign
     radiusKm, sampledRecords: payload.results.length, totalMatchingRecords: payload.count ?? payload.results.length,
     taxa: [...enriched, ...ranked.slice(6)],
     retrievedAt: now, sourceUrl,
-    methodology: 'A bounded sample of recent georeferenced GBIF occurrences. Only CC0/CC BY records with acceptable coordinate uncertainty are summarized. Counts describe records, not abundance or population.',
+    methodology: 'A bounded sample of recent georeferenced GBIF occurrences. Only CC0 records with acceptable coordinate uncertainty are summarized; CC BY aggregates remain excluded until dataset-level credits are preserved. Counts describe records, not abundance or population.',
   }
   lifeCache.set(cacheKey, context)
   return context
