@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:hero-lab": "vite --open /hero-lab.html",
     "build": "tsc -b && vite build",
+    "check:hero-lab-excluded": "node scripts/assert-hero-lab-excluded.mjs",
     "update:live-data": "node scripts/update-live-data.mjs",
     "build:city-data": "node scripts/build-city-catalog.mjs",
     "build:phone-preview": "NEXUS_SINGLE_FILE=1 vite build --outDir dist-preview && node scripts/inline-preview.mjs",

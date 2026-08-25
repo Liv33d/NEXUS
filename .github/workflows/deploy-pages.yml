@@ -27,6 +27,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run update:live-data
       - run: npm run build
+      - run: npm run check:hero-lab-excluded
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
