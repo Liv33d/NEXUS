@@ -21,6 +21,7 @@ interface Props {
   radarEnabled?: boolean
   satelliteEnabled?: boolean
   mapTheme?: 'dark' | 'street'
+  performanceMode?: 'automatic' | 'quality' | 'battery'
   initialView?: GeographicView
   onViewChange?(view: GeographicView): void
   onRequestGlobe?(): void

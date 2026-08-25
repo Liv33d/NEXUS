@@ -61,14 +61,17 @@ function weatherContext(signal: Signal): ContextCard {
 function fireContext(signal: Signal): ContextCard {
   const confidence = number(signal.confidence)
   const frp = number(signal.attributes.fireRadiativePowerMw)
+  const reportedIncident = signal.source.provider === 'eonet' || /\b(wildfire|forest fire|bushfire)\b/i.test(`${signal.title} ${signal.source.dataset ?? ''}`)
   return {
-    headline: 'Satellite detected unusual heat',
-    plainLanguageSummary: 'A satellite observed a thermal anomaly at this location. It may indicate active fire, industrial heat, or another hot surface and is not automatically a confirmed wildfire.',
-    whyItMatters: frp !== undefined && frp >= 50 ? 'The measured radiant heat is comparatively strong, so persistent or nearby detections deserve closer inspection.' : 'Repeated detections and agreement with official incidents provide stronger evidence than one satellite pixel.',
-    whatHappensNext: 'Later satellite passes may confirm whether the heat persists. Weather and official incident reports provide additional context.',
-    confidence: 'observed',
+    headline: reportedIncident ? 'Reported wildfire activity' : 'Unclassified thermal anomaly',
+    plainLanguageSummary: reportedIncident
+      ? (signal.summary ?? 'An authoritative event feed reports wildfire activity in this area.')
+      : 'A satellite observed unusual heat at this location. NEXUS does not have enough corroborating evidence to classify the source as a wildfire.',
+    whyItMatters: reportedIncident ? 'The event appears in an established hazard feed, but the original incident authority, extent, and local impact still require source review.' : frp !== undefined && frp >= 50 ? 'The measured radiant heat is comparatively strong, so persistent or nearby detections deserve closer inspection.' : 'Industrial heat, volcanic activity, agricultural burning, and other hot surfaces can also produce a thermal detection.',
+    whatHappensNext: reportedIncident ? 'The reporting authority may update the incident as conditions change.' : 'Later satellite passes or an official incident report may corroborate the source. Until then, the classification remains unknown.',
+    confidence: reportedIncident ? 'reported' : 'observed',
     technicalFacts: [confidence === undefined ? undefined : { label: 'Source confidence', value: `${Math.round(confidence * 100)}%` }, frp === undefined ? undefined : { label: 'Radiative power', value: `${frp.toFixed(1)} MW` }, text(signal.attributes.satellite) ? { label: 'Satellite', value: text(signal.attributes.satellite)! } : undefined].filter(Boolean) as Array<{ label: string; value: string }>,
-    methodology: 'Context preserves NASA FIRMS terminology: a thermal anomaly is an observation, not automatic confirmation of an uncontrolled wildfire.',
+    methodology: reportedIncident ? 'NEXUS preserves the authoritative provider classification and does not infer fire growth or impact.' : 'This is a NASA FIRMS thermal observation. Without independent corroboration, NEXUS keeps the source classification unknown rather than calling it a wildfire.',
   }
 }
 

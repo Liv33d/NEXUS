@@ -10,17 +10,16 @@ const life = readFileSync(resolve(process.cwd(), 'src/lib/lifeGlobe.ts'), 'utf8'
 const layers = readFileSync(resolve(process.cwd(), 'src/lib/layers.ts'), 'utf8')
 
 describe('globe visual stability contract', () => {
-  it('keeps raster shells separated from Earth geometry on mobile GPUs', () => {
-    expect(globe).toContain('getGlobeRadius() * 1.012')
+  it('keeps the supported radar shell separated from Earth geometry on mobile GPUs', () => {
     expect(globe).toContain('getGlobeRadius() * 1.022')
     expect(globe).toContain('polygonAltitude={0.0025}')
     expect(globe).toContain('depthWrite: false')
   })
 
-  it('does not treat a true-colour satellite image as an opaque second Earth', () => {
-    expect(globe).toContain('smoothstep(.055,.17,chroma)')
-    expect(globe).toContain("layerFocus === 'migration' || layerFocus === 'animals' ? 0.2 : 0.34")
-    expect(globe).toContain('if(cloud<.055)discard')
+  it('does not pretend a full-colour Earth image is a cloud mask', () => {
+    expect(globe).not.toContain('nasaObservedCloudImage')
+    expect(globe).not.toContain('cloudTexture')
+    expect(app).toContain('detailed map only')
   })
 
   it('never requests an absent city-light texture from the PWA shell', () => {
@@ -57,6 +56,7 @@ describe('globe visual stability contract', () => {
     expect(globe).toContain('visibleMigrationCorridors')
     expect(app).toContain('<IntelligenceInspector')
     expect(app).toContain('placeToIntelligence(city)')
+    expect(globe).toContain('onPathClick=')
   })
 
   it('opens Animals and Life on Earth with licensed biodiversity context', () => {

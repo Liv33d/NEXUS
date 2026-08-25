@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
 import { Mesh, MeshBasicMaterial, ShaderMaterial, SphereGeometry, SRGBColorSpace, TextureLoader, Vector2 } from 'three'
-import { nasaObservedCloudImage, noaaRadarImage } from '../lib/mapLayers'
+import { noaaRadarImage } from '../lib/mapLayers'
 import { subsolarPoint } from '../lib/solar'
 import { GLOBE_CITIES, type GlobeCity } from '../data/cities'
 import type { Signal } from '../types/signal'
@@ -29,7 +29,6 @@ interface Props {
   qualityMode?: 'automatic' | 'quality' | 'battery'
   initialView?: GeographicView
   onViewChange?(view: GeographicView): void
-  onRequestSolar?(): void
   migration?: MigrationSnapshot
   migrationFocus?: MigrationSnapshot['corridors'][number]
   life?: LifeGlobeSnapshot
@@ -116,21 +115,18 @@ function createEarthMaterial() {
   })
 }
 
-function GlobeView({ signals, selected, onSelect, onSelectMigration, onSelectLife, onSelectEcologicalCell, onSelectPlace, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestSolar, migration, migrationFocus, life, lifeFocus, layerFocus = 'world' }: Props) {
+function GlobeView({ signals, selected, onSelect, onSelectMigration, onSelectLife, onSelectEcologicalCell, onSelectPlace, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, migration, migrationFocus, life, lifeFocus, layerFocus = 'world' }: Props) {
   const ref = useRef<GlobeMethods | undefined>(undefined)
   const hostRef = useRef<HTMLDivElement>(null)
+  const radarMeshRef = useRef<Mesh | undefined>(undefined)
   const onReadyRef = useRef(onReady)
   const onViewChangeRef = useRef(onViewChange)
-  const onRequestSolarRef = useRef(onRequestSolar)
-  const solarArmRef = useRef({ armedUntil: 0, timer: 0 })
-  const [size, setSize] = useState({ width: Math.max(1, window.innerWidth), height: Math.max(1, window.innerHeight) })
+  const [size, setSize] = useState({ width: 1, height: 1 })
   const [ready, setReady] = useState(false)
   const [contextLost, setContextLost] = useState(false)
   const [viewpoint, setViewpoint] = useState<GlobeViewpoint>({ lat: initialView.latitude, lng: initialView.longitude, altitude: initialView.altitude })
   const [countries, setCountries] = useState<Array<Feature<Polygon | MultiPolygon>>>([])
   const [radarStatus, setRadarStatus] = useState<'loading' | 'live' | 'error'>('loading')
-  const [satelliteStatus, setSatelliteStatus] = useState<'loading' | 'live' | 'error'>('loading')
-  const [solarArmed, setSolarArmed] = useState(false)
   const [layerReference, setLayerReference] = useState(Date.now)
   const earthMaterial = useMemo(createEarthMaterial, [])
   const labels = useMemo(() => cityLabelsForView(viewpoint), [viewpoint])
@@ -205,7 +201,7 @@ function GlobeView({ signals, selected, onSelect, onSelectMigration, onSelectLif
     return () => window.clearInterval(timer)
   }, [radarEnabled, satelliteEnabled])
 
-  useEffect(() => { onReadyRef.current = onReady; onViewChangeRef.current = onViewChange; onRequestSolarRef.current = onRequestSolar }, [onReady, onRequestSolar, onViewChange])
+  useEffect(() => { onReadyRef.current = onReady; onViewChangeRef.current = onViewChange }, [onReady, onViewChange])
 
   useEffect(() => {
     const host = hostRef.current
@@ -306,30 +302,10 @@ function GlobeView({ signals, selected, onSelect, onSelectMigration, onSelectLif
         return geographicViewsDiffer(normalized, next) ? { lat: next.latitude, lng: next.longitude, altitude: next.altitude } : current
       })
       onViewChangeRef.current?.(next)
-      if (point.altitude < 2.9) {
-        solarArmRef.current.armedUntil = 0
-        window.clearTimeout(solarArmRef.current.timer)
-        setSolarArmed(false)
-      } else if (point.altitude >= 3.18) {
-        const now = Date.now()
-        if (solarArmRef.current.armedUntil >= now) {
-          solarArmRef.current.armedUntil = 0
-          window.clearTimeout(solarArmRef.current.timer)
-          setSolarArmed(false)
-          onRequestSolarRef.current?.()
-        } else {
-          solarArmRef.current.armedUntil = now + 4200
-          setSolarArmed(true)
-          window.clearTimeout(solarArmRef.current.timer)
-          solarArmRef.current.timer = window.setTimeout(() => setSolarArmed(false), 4200)
-        }
-      }
     }
     controls.addEventListener('end', commitView)
     return () => controls.removeEventListener('end', commitView)
   }, [ready])
-
-  useEffect(() => () => window.clearTimeout(solarArmRef.current.timer), [])
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -356,57 +332,53 @@ function GlobeView({ signals, selected, onSelect, onSelectMigration, onSelectLif
     const globe = ref.current
     if (!globe) return
     let cancelled = false
-    let mesh: Mesh | undefined
-    setRadarStatus('loading')
-    const texture = new TextureLoader().setCrossOrigin('anonymous').load(noaaRadarImage(), (loaded) => {
+    if (!radarMeshRef.current) setRadarStatus('loading')
+    new TextureLoader().setCrossOrigin('anonymous').load(noaaRadarImage(layerReference), (loaded) => {
       if (cancelled) { loaded.dispose(); return }
       // Keep raster shells well clear of Earth, borders and one another. The
       // former 1.003–1.006 radii were effectively coplanar on mobile GPUs and
       // produced the flicker seen on iPhone when the camera moved.
-      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.022, 96, 64), new MeshBasicMaterial({ map: loaded, transparent: true, opacity: layerFocus === 'migration' || layerFocus === 'animals' ? 0.42 : 0.7, depthWrite: false }))
-      mesh.renderOrder = 4
-      globe.scene().add(mesh)
+      const next = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.022, 96, 64), new MeshBasicMaterial({ map: loaded, transparent: true, opacity: 0.64, depthWrite: false }))
+      next.renderOrder = 4
+      globe.scene().add(next)
+      const previous = radarMeshRef.current
+      radarMeshRef.current = next
+      if (previous) {
+        globe.scene().remove(previous)
+        previous.geometry.dispose()
+        const material = previous.material as MeshBasicMaterial
+        material.map?.dispose()
+        material.dispose()
+      }
       setRadarStatus('live')
     }, undefined, () => { if (!cancelled) setRadarStatus('error') })
-    return () => {
-      cancelled = true
-      if (mesh) { globe.scene().remove(mesh); mesh.geometry.dispose(); (mesh.material as MeshBasicMaterial).dispose() }
-      texture.dispose()
-    }
-  }, [batterySaver, layerFocus, radarEnabled, ready])
+    return () => { cancelled = true }
+  }, [batterySaver, layerReference, radarEnabled, ready])
 
   useEffect(() => {
-    if (!ready || !satelliteEnabled || batterySaver) return
+    if (!ready || (radarEnabled && !batterySaver)) return
     const globe = ref.current
-    if (!globe) return
-    let cancelled = false
-    let mesh: Mesh | undefined
-    setSatelliteStatus('loading')
-    const texture = new TextureLoader().setCrossOrigin('anonymous').load(nasaObservedCloudImage(layerReference), (loaded) => {
-      if (cancelled) { loaded.dispose(); return }
-      loaded.colorSpace = SRGBColorSpace
-      // Daily GIBS true-colour is globally registered. Because this is not a
-      // cloud-mask product, reject chromatic terrain aggressively and retain
-      // only bright, nearly neutral pixels. This prevents the imagery from
-      // painting a second, misaligned Earth over the actual globe.
-      const material = new ShaderMaterial({
-        uniforms: { cloudTexture: { value: loaded }, opacity: { value: layerFocus === 'migration' || layerFocus === 'animals' ? 0.2 : 0.34 } },
-        vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-        fragmentShader: `uniform sampler2D cloudTexture;uniform float opacity;varying vec2 vUv;void main(){vec3 c=texture2D(cloudTexture,vUv).rgb;float hi=max(c.r,max(c.g,c.b));float lo=min(c.r,min(c.g,c.b));float lum=dot(c,vec3(.2126,.7152,.0722));float chroma=hi-lo;float neutral=1.0-smoothstep(.055,.17,chroma);float cloud=smoothstep(.46,.82,lum)*pow(neutral,1.7);if(cloud<.055)discard;vec3 cloudColor=mix(vec3(.78,.88,.92),vec3(.98,1.0,1.0),smoothstep(.55,.92,lum));gl_FragColor=vec4(cloudColor,cloud*opacity);}`,
-        transparent: true,
-        depthWrite: false,
-      })
-      mesh = new Mesh(new SphereGeometry(globe.getGlobeRadius() * 1.012, 72, 48), material)
-      mesh.renderOrder = 3
-      globe.scene().add(mesh)
-      setSatelliteStatus('live')
-    }, undefined, () => { if (!cancelled) setSatelliteStatus('error') })
-    return () => {
-      cancelled = true
-      if (mesh) { globe.scene().remove(mesh); mesh.geometry.dispose(); (mesh.material as ShaderMaterial).dispose() }
-      texture.dispose()
-    }
-  }, [batterySaver, layerFocus, layerReference, ready, satelliteEnabled])
+    const mesh = radarMeshRef.current
+    if (!globe || !mesh) return
+    globe.scene().remove(mesh)
+    mesh.geometry.dispose()
+    const material = mesh.material as MeshBasicMaterial
+    material.map?.dispose()
+    material.dispose()
+    radarMeshRef.current = undefined
+  }, [batterySaver, radarEnabled, ready])
+
+  useEffect(() => () => {
+    const globe = ref.current
+    const mesh = radarMeshRef.current
+    if (!globe || !mesh) return
+    globe.scene().remove(mesh)
+    mesh.geometry.dispose()
+    const material = mesh.material as MeshBasicMaterial
+    material.map?.dispose()
+    material.dispose()
+    radarMeshRef.current = undefined
+  }, [])
 
   return <div ref={hostRef} className="globe-stage" role="img" aria-label={`Interactive Earth showing ${points.length} visible signals`}>
     <Globe
@@ -428,6 +400,7 @@ function GlobeView({ signals, selected, onSelect, onSelectMigration, onSelectLif
       pathsData={forecastPaths} pathPoints={(item) => (item as { points: Array<{ lat: number; lng: number }> }).points}
       pathPointLat={(point) => (point as { lat: number }).lat} pathPointLng={(point) => (point as { lng: number }).lng}
       pathColor={() => ['rgba(160,220,255,.95)', 'rgba(143,245,232,.42)']} pathStroke={1.2} pathDashLength={0.08} pathDashGap={0.045} pathDashAnimateTime={batterySaver ? 0 : 5200} pathPointAlt={() => 0.018}
+      onPathClick={(item) => onSelect((item as { signal: Signal }).signal)}
       arcsData={visibleMigrationCorridors}
       arcStartLat={(item) => (item as MigrationSnapshot['corridors'][number]).startLatitude}
       arcStartLng={(item) => (item as MigrationSnapshot['corridors'][number]).startLongitude}
@@ -456,10 +429,8 @@ function GlobeView({ signals, selected, onSelect, onSelectMigration, onSelectLif
       }}
     />
     <div className="environment-status-stack">
-      {satelliteEnabled && satelliteStatus !== 'live' && <div className={`radar-provenance satellite ${satelliteStatus}`}><i/><span>{batterySaver ? 'CLOUDS PAUSED' : satelliteStatus === 'error' ? 'CLOUD IMAGERY UNAVAILABLE' : 'ACQUIRING OBSERVED CLOUDS'}</span></div>}
       {radarEnabled && radarStatus !== 'live' && <div className={`radar-provenance ${radarStatus}`}><i/><span>{batterySaver ? 'RADAR PAUSED' : radarStatus === 'error' ? 'RADAR UNAVAILABLE' : 'ACQUIRING NOAA RADAR'}</span></div>}
     </div>
-    {viewpoint.altitude > 2.35 && <div className={`space-transition-cue ${solarArmed ? 'armed' : ''}`}>{solarArmed ? 'PINCH OUT ONCE MORE · LEAVE EARTH' : 'CONTINUE OUTWARD · ORBIT'}</div>}
     {contextLost && <div className="map-loading renderer-recovery"><span/><strong>Restoring Earth</strong><small>Graphics context was interrupted</small></div>}
     <div className="globe-vignette" />
   </div>

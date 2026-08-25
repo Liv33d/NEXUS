@@ -17,6 +17,8 @@ describe('geographic renderer lifecycle regression guards', () => {
     expect(map).toContain("getSource('nexus-signals') as GeoJSONSource).setData(collection)")
     expect(map).toContain('new ResizeObserver(resize)')
     expect(map).toContain('try { map.remove() } catch')
+    expect(map).toContain('source.setTiles(tiles)')
+    expect(map).not.toContain("removeWeatherSource(map, 'nexus-radar')\n    removeWeatherSource(map, 'nexus-satellite')")
   })
 
   it('passes the same camera state into globe and map', () => {
@@ -34,5 +36,14 @@ describe('geographic renderer lifecycle regression guards', () => {
     expect(map).not.toContain('map-mode-switch')
     expect(app).toContain('shouldEnterDetailedMap(next)')
     expect(source('./ConnectedMapView.tsx')).toContain('shouldReturnToGlobe(map.getZoom())')
+  })
+
+  it('keeps Earth zoom isolated from the preserved Space prototype', () => {
+    const app = source('../App.tsx')
+    const globe = source('./GlobeView.tsx')
+    expect(app).not.toContain('SolarSystemView')
+    expect(app).not.toContain('enterSolarSystem')
+    expect(globe).not.toContain('onRequestSolar')
+    expect(globe).not.toContain('solarArm')
   })
 })

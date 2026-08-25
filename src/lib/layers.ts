@@ -43,9 +43,10 @@ export const nexusLayers: NexusLayerDefinition[] = [
 
 export const allLayerIds = nexusLayers.map((layer) => layer.id)
 export const defaultLayerIds: NexusLayerId[] = ['earthquakes', 'volcanoes', 'fires', 'fema', 'weather-alerts', 'storms', 'environment', 'space-weather']
+export const livingEarthLayerIds: NexusLayerId[] = ['earthquakes', 'volcanoes', 'fires', 'fema', 'weather-alerts', 'storms', 'life', 'environment', 'space-weather']
 
 export const layerPresets: Record<'world' | 'weather' | 'hazards' | 'migration' | 'life' | 'maritime' | 'aviation' | 'orbit', NexusLayerId[]> = {
-  world: allLayerIds,
+  world: livingEarthLayerIds,
   weather: ['clouds', 'radar', 'storms', 'weather-alerts', 'environment'],
   hazards: ['earthquakes', 'volcanoes', 'fires', 'fema', 'storms', 'weather-alerts'],
   migration: ['migration', 'life', 'clouds', 'weather-alerts'],
