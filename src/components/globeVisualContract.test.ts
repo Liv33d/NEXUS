@@ -19,7 +19,7 @@ describe('globe visual stability contract', () => {
   it('does not pretend a full-colour Earth image is a cloud mask', () => {
     expect(globe).not.toContain('nasaObservedCloudImage')
     expect(globe).not.toContain('cloudTexture')
-    expect(app).toContain('Latest GOES GeoColor · regional coverage')
+    expect(layers).toContain('Latest GOES GeoColor · regional coverage')
   })
 
   it('never requests an absent city-light texture from the PWA shell', () => {
@@ -33,8 +33,8 @@ describe('globe visual stability contract', () => {
     expect(globe).toContain('score(b) - score(a)')
   })
 
-  it('makes Migration an additive focus with visible activity pulses', () => {
-    expect(app).toContain('enableLayerCollection(layerPresets.migration)')
+  it('makes LIFE an additive view with selectable migration activity', () => {
+    expect(app).toContain('enableLayerCollection(layerPresets.life)')
     expect(app).not.toContain('setRadarEnabled(false)')
     expect(app).not.toContain('setSatelliteEnabled(false)')
     expect(globe).toContain("layerFocus === 'migration'")
@@ -42,9 +42,8 @@ describe('globe visual stability contract', () => {
     expect(globe).toContain("color: '#a4ffcc'")
     expect(migration).toContain("params.append('license', 'CC0_1_0')")
     expect(migration).not.toContain("params.append('license', 'CC_BY_4_0')")
-    expect(app).toContain('migrationFocus.distanceKm.toLocaleString()')
-    expect(app).toContain('migrationFocus.direction')
-    expect(app).toContain('corridor.commonName ?? corridor.species')
+    expect(app).toContain('migrationToIntelligence(corridor')
+    expect(app).not.toContain('migrationFocus.distanceKm')
     expect(globe).toContain('onArcClick=')
     expect(globe).toContain('onHexClick=')
     expect(globe).toContain('onSelectLife?.(point)')
@@ -75,8 +74,10 @@ describe('globe visual stability contract', () => {
 
   it('uses a compact portrait control hierarchy', () => {
     expect(styles).toContain('@media (orientation: portrait) and (max-width: 699px)')
-    expect(styles).toContain('grid-template-rows:repeat(2,72px)')
+    expect(styles).toContain('grid-template:repeat(2,minmax(72px,auto))/repeat(2,minmax(0,1fr))')
     expect(app).toContain('<details className="advanced-layers">')
+    expect(app).toContain('layer-category-accordion')
+    expect(app).not.toContain('taxon-strip')
   })
 
   it('never starts a WebGL map when WebGL2 is unavailable', () => {

@@ -22,18 +22,35 @@ describe('mobile interaction layout contract', () => {
     expect(styles).toContain('.nexus-hero-card.detent-story')
   })
 
-  it('exposes coherent Earth domains without presenting unavailable feeds as live', () => {
-    for (const label of ['Bird Migration', 'Maritime', 'Flight Activity', 'Animals & Life', 'Orbit']) {
+  it('keeps the intelligence sheet transform, viewport, and accessibility contract aligned', () => {
+    const inspector = readFileSync(resolve(process.cwd(), 'src/components/IntelligenceInspector.tsx'), 'utf8')
+    expect(styles).toContain('--sheet-story-visible')
+    expect(styles).toContain('height:var(--sheet-story-visible)')
+    expect(styles).toMatch(/\.inspector-drag-handle \{[^}]+height:44px/)
+    expect(styles).toContain('.nexus-hero-card[data-phase="settling"]')
+    expect(inspector).toContain('onLostPointerCapture={onLostPointerCapture}')
+    expect(inspector).toContain('scrollRef.current?.scrollTo')
+    expect(inspector).toContain('aria-controls="nexus-intelligence-content"')
+    expect(inspector).toContain('onKeyDown={onDialogKeyDown}')
+  })
+
+  it('presents four consumer quick views before progressively disclosed layers', () => {
+    for (const label of ['Living Earth', 'Weather', 'Hazards', 'Life']) {
       expect(app).toContain(label)
     }
-    expect(app).toContain('Ocean hazards · no live vessel tracking')
-    expect(app).toContain('No live aircraft provider connected')
+    expect(app).toContain('active-layer-summary')
+    expect(app).toContain('layer-category-accordion')
+    expect(app).toContain('aria-expanded={open}')
+    expect(app).not.toContain('taxon-strip')
+    expect(app).not.toContain('Ambient Earth')
     expect(styles).toContain('.domain-lens-grid')
   })
 
-  it('opens intelligence from LIFE and migration strips instead of changing hidden focus only', () => {
-    expect(app).toContain('selectMigration(corridor); setActivePanel(undefined)')
-    expect(app).toContain('selectLife(taxon); setActivePanel(undefined)')
+  it('opens LIFE and migration geometry through universal intelligence', () => {
+    expect(app).toContain('migrationToIntelligence(corridor')
+    expect(app).toContain('lifeTaxonToIntelligence(taxon')
+    expect(app).toContain('onSelectMigration={selectMigration}')
+    expect(app).toContain('onSelectLife={selectLife}')
     expect(app).not.toContain('Recent observed global cloud imagery')
   })
 
@@ -52,7 +69,9 @@ describe('mobile interaction layout contract', () => {
     expect(styles).toContain('.observer-dashboard>.weather-forecast { grid-column:2;grid-row:1/span 7')
   })
 
-  it('removes every ambient overlay when the display becomes idle', () => {
-    expect(styles).toContain('.ambient-idle .topbar,.ambient-idle .earth-overlay,.ambient-idle .bottom-nav,.ambient-idle .environment-status-stack')
+  it('removes the half-built ambient mode from production interaction', () => {
+    expect(app).not.toContain('ambientMode')
+    expect(app).not.toContain('wakeLock')
+    expect(app).not.toContain('Ambient Earth')
   })
 })
