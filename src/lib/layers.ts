@@ -22,7 +22,7 @@ export interface NexusLayerDefinition {
 }
 
 export const nexusLayers: NexusLayerDefinition[] = [
-  { id: 'clouds', label: 'Clouds', shortDescription: 'Recent observed global cloud imagery', category: 'ATMOSPHERE', defaultOpacity: .34, renderOrder: 30, semanticZoom: { minAltitude: .05, maxAltitude: 5 }, performanceCost: 'high', provider: 'NASA GIBS', visualization: 'raster' },
+  { id: 'clouds', label: 'Clouds', shortDescription: 'Recent regional imagery · detailed map', category: 'ATMOSPHERE', defaultOpacity: .34, renderOrder: 30, semanticZoom: { minAltitude: .05, maxAltitude: 5 }, performanceCost: 'high', provider: 'NASA GIBS', visualization: 'raster' },
   { id: 'radar', label: 'Radar', shortDescription: 'Recent U.S. precipitation radar', category: 'ATMOSPHERE', defaultOpacity: .68, renderOrder: 40, semanticZoom: { minAltitude: .05, maxAltitude: 2.5 }, performanceCost: 'high', provider: 'NOAA MRMS', visualization: 'raster' },
   { id: 'storms', label: 'Storm tracks', shortDescription: 'Official tropical cyclone tracks', category: 'HAZARDS', defaultOpacity: 1, renderOrder: 70, semanticZoom: { minAltitude: .05, maxAltitude: 5 }, performanceCost: 'medium', provider: 'NOAA NHC', visualization: 'tracks', signalTypes: ['weather'] },
   { id: 'weather-alerts', label: 'Weather alerts', shortDescription: 'Severe official warnings', category: 'HAZARDS', defaultOpacity: .78, renderOrder: 65, semanticZoom: { minAltitude: .05, maxAltitude: 2.5 }, performanceCost: 'medium', provider: 'NWS', visualization: 'polygons', signalTypes: ['weather'] },
