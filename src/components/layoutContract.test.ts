@@ -21,6 +21,12 @@ describe('mobile interaction layout contract', () => {
     expect(styles).toContain('.domain-lens-grid')
   })
 
+  it('opens intelligence from LIFE and migration strips instead of changing hidden focus only', () => {
+    expect(app).toContain('selectMigration(corridor); setActivePanel(undefined)')
+    expect(app).toContain('selectLife(taxon); setActivePanel(undefined)')
+    expect(app).not.toContain('Recent observed global cloud imagery')
+  })
+
   it('reserves Earth zoom exclusively for Earth navigation', () => {
     expect(app).not.toContain('onRequestSolar')
     expect(app).not.toContain('enterSolarSystem')
