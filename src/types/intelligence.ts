@@ -11,10 +11,11 @@ export type IntelligenceKind =
   | 'place'
 
 export type IntelligenceDomain = 'hazards' | 'weather' | 'life' | 'human' | 'ocean' | 'orbit' | 'place'
+export type IntelligenceEvidence = 'official' | 'observed' | 'reported' | 'corroborated' | 'derived' | 'predicted' | 'estimated' | 'possible' | 'unknown'
 
 export interface IntelligenceMedia {
   id: string
-  kind: 'photo' | 'satellite' | 'radar' | 'map' | 'diagram'
+  kind: 'photo' | 'satellite' | 'radar' | 'model' | 'map' | 'chart' | 'diagram' | 'audio' | 'animation'
   url: string
   title: string
   alt: string
@@ -24,6 +25,8 @@ export interface IntelligenceMedia {
   sourceUrl?: string
   observedAt?: number
   freshness?: 'live' | 'near-real-time' | 'recent' | 'historical' | 'derived'
+  role?: 'current-evidence' | 'forecast' | 'representative' | 'historical'
+  geographicScope?: string
 }
 
 export interface IntelligenceFact {
@@ -46,6 +49,7 @@ export interface NexusIntelligenceObject {
   scientificName?: string
   subtitle?: string
   status: 'live' | 'near-real-time' | 'recent' | 'forecast' | 'historical' | 'derived' | 'cached'
+  evidence?: IntelligenceEvidence
   timestamp?: number
   location?: { latitude: number; longitude: number }
   geometry?: GeoJSON.Geometry

@@ -24,6 +24,8 @@ describe('universal intelligence objects', () => {
     expect(object.title).toBe('Gray-cheeked Thrush')
     expect(object.scientificName).toBe('Catharus minimus')
     expect(object.status).toBe('derived')
+    expect(object.evidence).toBe('derived')
+    expect(object.confidence).toBeUndefined()
     expect(object.movement?.interpretation).toContain('observation centers')
     expect(object.whyItMatters).toContain('not a track')
   })
@@ -62,5 +64,22 @@ describe('universal intelligence objects', () => {
     expect(object.title).toBe('Possible fire activity')
     expect(object.relationships[0]?.title).toContain('Reported wildfire activity')
     expect(object.methodology).toContain('proximity does not prove causation')
+  })
+
+  it('does not classify thermal detections from distant, stale, or untrusted fire text', () => {
+    const now = 1_800_000_000_000
+    const thermal: Signal = { id: 'firms', source: { provider: 'firms', retrievedAt: now, freshness: 'live' }, type: 'fire', title: 'Thermal detection', timestamp: now, location: { latitude: 34, longitude: -118 }, attributes: {}, provenance: [] }
+    const evidence = (provider: string, latitude: number, timestamp: number): Signal => ({ ...thermal, id: `${provider}-${latitude}-${timestamp}`, source: { provider, retrievedAt: now, freshness: 'live' }, title: 'Wildfire report', timestamp, location: { latitude, longitude: -118 } })
+    expect(classifyThermalSignal(thermal, [evidence('eonet', 34.12, now)]).classification).toBe('unclassified')
+    expect(classifyThermalSignal(thermal, [evidence('eonet', 34.01, now - 25 * 3_600_000)]).classification).toBe('unclassified')
+    expect(classifyThermalSignal(thermal, [evidence('demo', 34.01, now)]).classification).toBe('unclassified')
+    expect(classifyThermalSignal(thermal, [evidence('eonet', 34.01, now)]).classification).toBe('possible-fire')
+  })
+
+  it('refuses generic or unlicensed hero media for selected hazards', () => {
+    const base: Signal = { id: 'storm', source: { provider: 'nhc', retrievedAt: 10, freshness: 'live', url: 'https://www.nhc.noaa.gov' }, type: 'weather', title: 'Hurricane Example', timestamp: 10, location: { latitude: 22, longitude: -70 }, attributes: {}, provenance: [] }
+    const volcano: Signal = { ...base, id: 'volcano', source: { ...base.source, provider: 'usgs-volcano' }, type: 'environment', attributes: { volcanoImage: 'https://example.com/unlicensed.jpg' } }
+    expect(signalToIntelligence(base).media).toEqual([])
+    expect(signalToIntelligence(volcano).media).toEqual([])
   })
 })

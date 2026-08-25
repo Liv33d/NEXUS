@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, ChevronDown, ExternalLink, MapPin, Microscope, Navigation, ShieldCheck, X } from 'lucide-react'
+import { Bell, ChevronDown, ExternalLink, MapPin, Microscope, ShieldCheck, X } from 'lucide-react'
 import type { NexusIntelligenceObject } from '../types/intelligence'
 import { enrichSelectedIntelligence } from '../lib/intelligence'
 
@@ -19,21 +19,21 @@ function freshnessLabel(object: NexusIntelligenceObject) {
 
 export type InformationDensity = 'simple' | 'standard' | 'expert'
 
-export function IntelligenceInspector({ object, density = 'standard', onClose, onWatch, onObserve, onSelectRelated }: {
+export function IntelligenceInspector({ object, density = 'standard', onClose, onWatch, onSelectRelated }: {
   object: NexusIntelligenceObject
   density?: InformationDensity
   onClose(): void
   onWatch?(object: NexusIntelligenceObject): void
-  onObserve?(object: NexusIntelligenceObject): void
   onSelectRelated?(object: NexusIntelligenceObject): void
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [detent, setDetent] = useState<'peek' | 'story' | 'full'>('peek')
   const [mediaIndex, setMediaIndex] = useState(0)
   const [failedMedia, setFailedMedia] = useState<Set<string>>(() => new Set())
   const [resolved, setResolved] = useState(object)
   const dragStart = useRef<number | undefined>(undefined)
+  const suppressHandleClick = useRef(false)
   useEffect(() => {
-    setExpanded(false); setMediaIndex(0); setFailedMedia(new Set()); setResolved(object)
+    setDetent('peek'); setMediaIndex(0); setFailedMedia(new Set()); setResolved(object)
     const controller = new AbortController()
     void enrichSelectedIntelligence(object, controller.signal).then((value) => { if (!controller.signal.aborted) setResolved(value) })
     return () => controller.abort()
@@ -41,31 +41,35 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
   const availableMedia = resolved.media.filter((item) => !failedMedia.has(item.id))
   const media = availableMedia[Math.min(mediaIndex, Math.max(0, availableMedia.length - 1))]
   const domainClass = `intelligence-${resolved.domain}`
-  const canObserve = Boolean(resolved.location)
   const mediaLabel = useMemo(() => media ? `${media.title}${media.observedAt ? ` · ${relativeAge(media.observedAt)}` : ''}` : undefined, [media])
+  const stepDetent = (direction: 'up' | 'down') => setDetent((current) => {
+    if (direction === 'up') return current === 'peek' ? 'story' : 'full'
+    return current === 'full' ? 'story' : 'peek'
+  })
   return (
-    <section className={`intelligence-inspector ${domainClass} ${expanded ? 'expanded' : 'compact'}`} role="dialog" aria-label={`${resolved.title} intelligence`}>
-      <button className="inspector-drag-handle" aria-label={expanded ? 'Collapse details' : 'Expand details'}
-        onClick={() => setExpanded((value) => !value)}
+    <section className={`intelligence-inspector nexus-hero-card ${domainClass} detent-${detent}`} role="dialog" aria-label={`${resolved.title} intelligence`}>
+      <button className="inspector-drag-handle" aria-label={detent === 'full' ? 'Collapse details' : 'Expand details'}
+        onClick={() => { if (suppressHandleClick.current) { suppressHandleClick.current = false; return } stepDetent(detent === 'full' ? 'down' : 'up') }}
         onPointerDown={(event) => { dragStart.current = event.clientY; event.currentTarget.setPointerCapture(event.pointerId) }}
-        onPointerUp={(event) => { const start = dragStart.current; if (start !== undefined && Math.abs(event.clientY - start) > 32) setExpanded(event.clientY < start); dragStart.current = undefined }}><span/></button>
+        onPointerUp={(event) => { const start = dragStart.current; if (start !== undefined && Math.abs(event.clientY - start) > 28) { suppressHandleClick.current = true; stepDetent(event.clientY < start ? 'up' : 'down') } dragStart.current = undefined }}
+        onPointerCancel={() => { dragStart.current = undefined; suppressHandleClick.current = false }}><span/></button>
       <button className="sheet-close" aria-label="Close intelligence" onClick={onClose}><X size={19}/></button>
-      {media ? <div className="intelligence-hero">
+      {media ? <div className="intelligence-hero intelligence-media-frame">
         <img src={media.url} alt={media.alt} loading="eager" decoding="async" referrerPolicy="no-referrer" onError={() => { setFailedMedia((current) => new Set([...current, media.id])); setMediaIndex(0) }}/>
         <div className="intelligence-hero-shade"/>
         <span>{mediaLabel}</span>
         {availableMedia.length > 1 && <div className="media-tabs" role="tablist" aria-label="Evidence media">{availableMedia.map((item, index) => <button key={item.id} className={index === mediaIndex ? 'active' : ''} role="tab" aria-selected={index === mediaIndex} onClick={() => setMediaIndex(index)}>{item.kind}</button>)}</div>}
-      </div> : <div className="intelligence-hero intelligence-hero-fallback" aria-hidden="true"><span>{resolved.domain.toUpperCase()}</span></div>}
+      </div> : <div className="intelligence-hero intelligence-hero-fallback" aria-hidden="true"><span>{resolved.domain.toUpperCase()}</span><i/></div>}
       <div className="intelligence-content">
-        <div className="intelligence-eyebrow"><i/>{freshnessLabel(resolved)}</div>
+        <div className="intelligence-eyebrow"><i/>{freshnessLabel(resolved)}{resolved.evidence ? ` · ${resolved.evidence}` : ''}</div>
         <h2>{resolved.title}</h2>
         {density !== 'simple' && resolved.scientificName && <em className="scientific-name">{resolved.scientificName}</em>}
         {resolved.subtitle && <p className="intelligence-subtitle">{resolved.subtitle}</p>}
         <p className="intelligence-summary">{resolved.summary}</p>
+        {resolved.facts.length > 0 && <div className="hero-key-facts">{resolved.facts.slice(0, 3).map((fact) => <span key={fact.label}><small>{fact.label}</small><strong>{fact.value}</strong></span>)}</div>}
         <div className="intelligence-actions">
           {onWatch && resolved.location && <button onClick={() => onWatch(resolved)}><Bell/> {resolved.watchLabel ?? 'Watch'}</button>}
-          {onObserve && canObserve && <button onClick={() => onObserve(resolved)}><Navigation/> Understand here</button>}
-          <button className="details-action" onClick={() => setExpanded((value) => !value)}>{expanded ? 'Less' : 'Explore'} <ChevronDown/></button>
+          <button className="details-action" onClick={() => stepDetent(detent === 'full' ? 'down' : 'up')}>{detent === 'full' ? 'Less' : 'Explore'} <ChevronDown/></button>
         </div>
         <div className="intelligence-expanded">
           {resolved.whyItMatters && <section className="intelligence-answer"><span>WHY IT MATTERS</span><p>{resolved.whyItMatters}</p></section>}
@@ -76,7 +80,6 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
             <summary><Microscope/> Show the science <ChevronDown/></summary>
             {resolved.facts.length > 0 && <div className="technical-facts">{resolved.facts.map((fact) => <span key={fact.label}>{fact.label}<strong>{fact.value}</strong></span>)}</div>}
             {resolved.location && <div className="location-row"><MapPin size={16}/>{resolved.location.latitude.toFixed(3)}, {resolved.location.longitude.toFixed(3)}</div>}
-            {resolved.confidence !== undefined && <div className="confidence-line"><span>Confidence</span><strong>{Math.round(resolved.confidence * 100)}%</strong></div>}
             <p className="methodology-copy">{resolved.methodology}</p>
             {resolved.provenance.map((entry, index) => <div className="provenance" key={`${entry.label}-${index}`}><ShieldCheck size={17}/><div><strong>{entry.label.replaceAll('_', ' ')}</strong><span>{entry.description}</span></div></div>)}
             {media && <div className="media-license"><span>{media.attribution}</span>{media.license && <strong>{media.license}</strong>}{media.sourceUrl && <a href={media.sourceUrl} target="_blank" rel="noreferrer">Media source <ExternalLink/></a>}</div>}

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Bird, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, MonitorUp, Moon, PawPrint, Plane, RefreshCw, Satellite, Search, ShipWheel, SunMedium, X } from 'lucide-react'
+import { Activity, Bird, Clock3, CloudRain, Globe2, Layers3, LoaderCircle, MonitorUp, PawPrint, Plane, RefreshCw, Satellite, Search, ShipWheel, X } from 'lucide-react'
 import { BottomNav, TopBar } from './components/Chrome'
-import { CasesPage, DiscoverPage, ObserverPage, SearchPanel, SurpriseButton } from './components/Pages'
+import { CasesPage, DiscoverPage, ObserverPage, SearchPanel } from './components/Pages'
 import SettingsPage, { type MapTheme, type PerformanceMode } from './components/SettingsPage'
 import { IntelligenceInspector, type InformationDensity } from './components/IntelligenceInspector'
 import { TimeControl } from './components/TimeControl'
@@ -9,15 +9,13 @@ import { ReplayControl } from './components/ReplayControl'
 import { AccessibleEarthFallback } from './components/AccessibleEarthFallback'
 import { filterVisibleSignals, useNexusStore } from './store/useNexusStore'
 import type { Discovery, Signal } from './types/signal'
-import { clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, shouldEnterDetailedMap, type GeographicView } from './lib/geography'
+import { clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, type GeographicView } from './lib/geography'
 import { fetchMigrationSnapshot, type MigrationSnapshot } from './lib/migration'
 import { fetchLifeGlobeSnapshot, type LifeGlobeSnapshot } from './lib/lifeGlobe'
 import { allLayerIds, layerPresets, layerSupportsSignal, livingEarthLayerIds, nexusLayers, visibleWithLayers, type NexusLayerId } from './lib/layers'
-import { discoveryToIntelligence, ecologicalClusterToIntelligence, lifeTaxonToIntelligence, migrationToIntelligence, placeToIntelligence, signalClusterToIntelligence, signalToIntelligence } from './lib/intelligence'
+import { discoveryToIntelligence, ecologicalClusterToIntelligence, lifeTaxonToIntelligence, migrationToIntelligence, searchedPlaceToIntelligence, signalClusterToIntelligence, signalToIntelligence } from './lib/intelligence'
 import type { NexusIntelligenceObject } from './types/intelligence'
-import type { GlobeCity } from './data/cities'
 
-const GlobeView = lazy(() => import('./components/GlobeView'))
 const MapView = lazy(() => import('./components/MapView'))
 
 let cachedWebGLSupport: boolean | undefined
@@ -38,7 +36,6 @@ export default function App() {
   const store = useNexusStore()
   const [online, setOnline] = useState(navigator.onLine)
   const [webGLAvailable] = useState(supportsWebGL)
-  const [visualMode, setVisualMode] = useState<'globe' | 'map'>(() => supportsWebGL() ? 'globe' : 'map')
   const [activePanel, setActivePanel] = useState<'search' | 'layers' | 'time'>()
   const [activeEarthLens, setActiveEarthLens] = useState<EarthLensId>(() => {
     try { return localStorage.getItem('nexus:visualLayers') ? 'custom' : 'world' } catch { return 'world' }
@@ -68,15 +65,9 @@ export default function App() {
   const lifeEnabled = enabledLayers.has('life')
   const radarEnabled = enabledLayers.has('radar')
   const satelliteEnabled = enabledLayers.has('clouds')
-  const [lightingMode, setLightingMode] = useState<'live' | 'day' | 'night'>(() => {
-    try { const value = localStorage.getItem('nexus:lighting'); return value === 'day' || value === 'night' ? value : 'live' } catch { return 'live' }
-  })
   const [performanceMode, setPerformanceMode] = useState<PerformanceMode>(() => {
     try { const value = localStorage.getItem('nexus:performance'); return value === 'quality' || value === 'battery' ? value : 'automatic' } catch { return 'automatic' }
   })
-  const [autoRotate, setAutoRotate] = useState(() => { try { return localStorage.getItem('nexus:autoRotate') !== 'false' } catch { return true } })
-  const [atmosphere, setAtmosphere] = useState(() => { try { return localStorage.getItem('nexus:atmosphere') !== 'false' } catch { return true } })
-  const [labels, setLabels] = useState(() => { try { return localStorage.getItem('nexus:labels') !== 'false' } catch { return true } })
   const [mapTheme, setMapTheme] = useState<MapTheme>(() => { try { return localStorage.getItem('nexus:mapTheme') === 'street' ? 'street' : 'dark' } catch { return 'dark' } })
   const [ambientMode, setAmbientMode] = useState(false)
   const [replayCutoff, setReplayCutoff] = useState<number>()
@@ -95,7 +86,6 @@ export default function App() {
   const lifeFocus = life?.taxa.find((taxon) => taxon.id === lifeFocusId)
   const activeLayerCount = enabledLayers.size
   const selectSignalById = store.selectSignal
-  const markGlobeReady = store.setGlobeReady
   const selectSignal = useCallback((signal: Signal) => { selectSignalById(signal.id); setSelectedIntelligence(signalToIntelligence(signal, store.signals)) }, [selectSignalById, store.signals])
   const selectSignalCluster = useCallback((signals: Signal[], location: { latitude: number; longitude: number }) => {
     selectSignalById(undefined)
@@ -119,7 +109,6 @@ export default function App() {
     selectSignalById(undefined)
     setSelectedIntelligence(ecologicalClusterToIntelligence(cell, cell.domain, snapshot.retrievedAt, snapshot.methodology))
   }, [life, migration, selectSignalById])
-  const selectPlace = useCallback((city: GlobeCity) => { selectSignalById(undefined); setSelectedIntelligence(placeToIntelligence(city)) }, [selectSignalById])
   const closeIntelligence = useCallback(() => { selectSignalById(undefined); setSelectedIntelligence(undefined) }, [selectSignalById])
   const selectDiscovery = useCallback((discovery: Discovery) => {
     selectSignalById(undefined)
@@ -130,19 +119,7 @@ export default function App() {
     if (!object.location) return
     void store.watchPlace({ id: object.id, name: object.title, subtitle: object.subtitle ?? object.domain, latitude: object.location.latitude, longitude: object.location.longitude })
   }, [store])
-  const observeIntelligence = useCallback((object: NexusIntelligenceObject) => {
-    if (!object.location) return
-    closeIntelligence()
-    store.observePlace({ id: object.id, name: object.title, subtitle: object.subtitle ?? object.domain, latitude: object.location.latitude, longitude: object.location.longitude })
-  }, [closeIntelligence, store])
-  const globeReady = useCallback(() => markGlobeReady(true), [markGlobeReady])
-  const handleGlobeViewChange = useCallback((view: GeographicView) => {
-    const next = clampGeographicView(view)
-    setGeographicView(next)
-    if (shouldEnterDetailedMap(next)) setVisualMode('map')
-  }, [])
   const handleMapViewChange = useCallback((view: GeographicView) => setGeographicView(clampGeographicView(view)), [])
-  const returnToGlobe = useCallback(() => { if (webGLAvailable) setVisualMode('globe') }, [webGLAvailable])
   const enableLayerCollection = useCallback((ids: NexusLayerId[]) => setEnabledLayers((current) => new Set([...current, ...ids])), [])
   const toggleVisualLayer = useCallback((id: NexusLayerId) => setEnabledLayers((current) => {
     const next = new Set(current)
@@ -215,19 +192,14 @@ export default function App() {
   }, [lifeEnabled])
 
   useEffect(() => {
-    try { localStorage.setItem('nexus:lighting', lightingMode) } catch { /* private storage may be unavailable */ }
-  }, [lightingMode])
-
-  useEffect(() => {
     try { localStorage.setItem('nexus:informationDensity', informationDensity) } catch { /* private storage may be unavailable */ }
   }, [informationDensity])
 
   useEffect(() => {
     try {
-      localStorage.setItem('nexus:performance', performanceMode); localStorage.setItem('nexus:autoRotate', String(autoRotate))
-      localStorage.setItem('nexus:atmosphere', String(atmosphere)); localStorage.setItem('nexus:labels', String(labels)); localStorage.setItem('nexus:mapTheme', mapTheme)
+      localStorage.setItem('nexus:performance', performanceMode); localStorage.setItem('nexus:mapTheme', mapTheme)
     } catch { /* private storage may be unavailable */ }
-  }, [atmosphere, autoRotate, labels, mapTheme, performanceMode])
+  }, [mapTheme, performanceMode])
 
   useEffect(() => {
     if (!ambientActive) { setAmbientIdle(false); void wakeLock.current?.release(); wakeLock.current = null; return }
@@ -247,27 +219,22 @@ export default function App() {
 
   const earthContent = useMemo(() => (
     <>
-      {!webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={selectSignal}/> : visualMode === 'map' ? <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Loading geographic detail</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} mapTheme={mapTheme} performanceMode={performanceMode} initialView={geographicView} onViewChange={handleMapViewChange} onRequestGlobe={returnToGlobe} onSelect={selectSignal} onSelectSignalCluster={selectSignalCluster} onSelectMigration={selectMigration} onSelectLife={selectLife} onSelectEcologicalCell={selectEcologicalCell} migration={migrationEnabled ? migration : undefined} life={lifeEnabled ? life : undefined}/></Suspense> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}>
-        <GlobeView signals={visibleSignals} selected={selectedSignal} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} lightingMode={lightingMode} batterySaver={performanceMode === 'battery'} qualityMode={performanceMode} autoRotate={autoRotate} atmosphereEnabled={atmosphere} labelsEnabled={labels} initialView={geographicView} onViewChange={handleGlobeViewChange} onSelect={selectSignal} onSelectMigration={selectMigration} onSelectLife={selectLife} onSelectEcologicalCell={selectEcologicalCell} onSelectPlace={selectPlace} onReady={globeReady} migration={migrationEnabled ? migration : undefined} migrationFocus={migrationEnabled ? migrationFocus : undefined} life={lifeEnabled ? life : undefined} lifeFocus={lifeEnabled ? lifeFocus : undefined} layerFocus={activeEarthLens}/>
-      </Suspense>}
+      {!webGLAvailable ? <AccessibleEarthFallback signals={visibleSignals} onSelect={selectSignal}/> : <Suspense fallback={<div className="globe-loading"><LoaderCircle/><span>Awakening Earth</span></div>}><MapView signals={visibleSignals} selected={selectedSignal} focusLocation={activeIntelligence?.location} radarEnabled={radarEnabled} satelliteEnabled={satelliteEnabled} mapTheme={mapTheme} performanceMode={performanceMode} initialView={geographicView} onViewChange={handleMapViewChange} onSelect={selectSignal} onSelectSignalCluster={selectSignalCluster} onSelectMigration={selectMigration} onSelectLife={selectLife} onSelectEcologicalCell={selectEcologicalCell} migration={migrationEnabled ? migration : undefined} life={lifeEnabled ? life : undefined}/></Suspense>}
       <div className="earth-overlay">
         {significantCount > 0 && leadDiscovery && <button className={`world-pulse level-${leadDiscovery.level}`} onClick={() => selectDiscovery(leadDiscovery)}>
           <span><Activity/> WORLD PULSE <i>{significantCount ? `${significantCount} significant` : 'nominal'}</i></span>
           <strong>{leadDiscovery?.title ?? (store.isRefreshing ? 'Resolving current activity…' : 'No significant convergence detected')}</strong>
           <small>{leadDiscovery ? leadDiscovery.memory?.status === 'established' ? `${Math.abs(leadDiscovery.memory.deviationPercent ?? 0) >= 100 ? 'Far outside' : 'Different from'} the recent ${leadDiscovery.memory.observedDays}-day regional pattern · tap to understand` : `${leadDiscovery.signalIds.length} evidence item${leadDiscovery.signalIds.length === 1 ? '' : 's'} · learning the regional pattern` : `${visibleSignals.length} qualifying signals · ${liveSourceCount} live sources`}</small>
         </button>}
-        {migrationEnabled && migrationFocus && activeEarthLens === 'migration' && <button className="domain-focus-card migration-focus" onClick={() => selectMigration(migrationFocus)} aria-label={`Migration context for ${migrationFocus.commonName ?? migrationFocus.species}`}>{migrationFocus.media && <img src={migrationFocus.media.url} alt="" loading="lazy" referrerPolicy="no-referrer"/>}<span><Bird/> MIGRATION WATCH <i>DERIVED</i></span><strong>{(migrationFocus.commonName ?? migrationFocus.species).toLocaleUpperCase()}</strong><p>Recent observations have shifted {migrationFocus.direction} compared with the previous two weeks.</p><small>{migrationFocus.commonName ? <em>{migrationFocus.species}</em> : null}{migrationFocus.commonName ? ' · ' : ''}{migrationFocus.recentObservations} recent observations · tap to understand</small></button>}
-        {lifeEnabled && lifeFocus && activeEarthLens === 'animals' && <button className="domain-focus-card life-focus" onClick={() => selectLife(lifeFocus)} aria-label={`Life context for ${lifeFocus.commonName ?? lifeFocus.scientificName}`}>{lifeFocus.media && <img src={lifeFocus.media.url} alt="" loading="lazy" referrerPolicy="no-referrer"/>}<span><PawPrint/> LIFE ATLAS <i>OBSERVED</i></span><strong>{(lifeFocus.commonName ?? lifeFocus.scientificName).toLocaleUpperCase()}</strong><p>Recently documented in this global sample.</p><small>{lifeFocus.commonName ? <em>{lifeFocus.scientificName}</em> : lifeFocus.taxonomicClass ?? lifeFocus.kingdom} · {lifeFocus.observations} licensed record{lifeFocus.observations === 1 ? '' : 's'} · tap to understand</small></button>}
         <button className={`earth-tools-button ${activePanel ? 'active' : ''}`} onClick={() => setActivePanel(activePanel ? undefined : 'layers')} aria-expanded={Boolean(activePanel)} aria-label={`Explore Earth controls. ${activeLayerCount} active layers.`}><Layers3/><span>{activeLayerCount}</span></button>
         {!webGLAvailable && <div className="compatibility-notice" role="status">Accessible signal mode · WebGL 2 unavailable</div>}
-        <div className="earth-bottom"><SurpriseButton onClick={() => { const result = store.surprise(); if (!result) return; if ('signalIds' in result) selectDiscovery(result as Discovery); else selectSignal(result as Signal) }}/></div>
       </div>
       {activePanel && <div className="command-scrim" onClick={() => setActivePanel(undefined)}>
         <section className="command-sheet" role="dialog" aria-modal="true" aria-label={`${activePanel} controls`} onClick={(event) => event.stopPropagation()}>
           <div className="sheet-handle"/>
           <header><div><span className="eyebrow">EXPLORE EARTH</span><h2>{activePanel === 'search' ? 'Find anywhere' : activePanel === 'layers' ? 'What do you want to see?' : 'Move through time'}</h2></div><div className="command-header-actions"><button onClick={() => void store.refresh()} aria-label="Refresh sources"><RefreshCw className={store.isRefreshing ? 'spin' : ''}/></button><button onClick={() => setActivePanel(undefined)} aria-label="Close controls"><X/></button></div></header>
           <nav className="command-tabs" aria-label="Earth control sections"><button className={activePanel === 'search' ? 'active' : ''} onClick={() => setActivePanel('search')}><Search/>Find</button><button className={activePanel === 'layers' ? 'active' : ''} onClick={() => setActivePanel('layers')}><Layers3/>Layers</button><button className={activePanel === 'time' ? 'active' : ''} onClick={() => setActivePanel('time')}><Clock3/>Time</button></nav>
-          {activePanel === 'search' && <><SearchPanel signals={store.signals} onSelect={(signal) => { store.selectSignal(signal.id); setActivePanel(undefined) }} onPlace={(place) => { store.observePlace(place); setActivePanel(undefined) }}/><p className="control-note">Places open directly in Observer. Current evidence remains traceable to its original source.</p></>}
+          {activePanel === 'search' && <><SearchPanel signals={store.signals} onSelect={(signal) => { selectSignal(signal); setActivePanel(undefined) }} onPlace={(place) => { selectSignalById(undefined); setSelectedIntelligence(searchedPlaceToIntelligence(place)); setGeographicView({ latitude: place.latitude, longitude: place.longitude, altitude: .35 }); setActivePanel(undefined) }}/><p className="control-note">Results stay on Earth and open in the same intelligence sheet. Sources remain available in details.</p></>}
           {activePanel === 'layers' && <>
             <section className="domain-launcher" aria-labelledby="domain-lenses-heading">
               <div className="domain-heading"><span>QUICK VIEWS</span><small>Views add compatible layers. Nothing is silently removed.</small></div>
@@ -282,14 +249,9 @@ export default function App() {
               </div>
               <p>Quick Views emphasize a subject while preserving compatible layers. NEXUS automatically reduces visual density as more systems are enabled.</p>
             </section>
-            <div className="lighting-control"><span>EARTH LIGHTING</span><div>
-              <button className={lightingMode === 'live' ? 'active' : ''} onClick={() => setLightingMode('live')}><Globe2/>Live</button>
-              <button className={lightingMode === 'day' ? 'active' : ''} onClick={() => setLightingMode('day')}><SunMedium/>Day</button>
-              <button className={lightingMode === 'night' ? 'active' : ''} onClick={() => setLightingMode('night')}><Moon/>Night</button>
-            </div></div>
             <div className="environment-grid">
               <button className={`environment-lens ${radarEnabled ? 'active' : ''}`} onClick={() => toggleVisualLayer('radar')} aria-pressed={radarEnabled}><CloudRain/><span><strong>Weather radar</strong><small>Recent precipitation · U.S. coverage</small></span><b>{radarEnabled ? 'ON' : 'OFF'}</b></button>
-              <button className={`environment-lens ${satelliteEnabled ? 'active' : ''}`} onClick={() => toggleVisualLayer('clouds')} aria-pressed={satelliteEnabled}><Satellite/><span><strong>Cloud imagery</strong><small>Recent regional imagery · detailed map only</small></span><b>{satelliteEnabled ? 'ON' : 'OFF'}</b></button>
+              <button className={`environment-lens ${satelliteEnabled ? 'active' : ''}`} onClick={() => toggleVisualLayer('clouds')} aria-pressed={satelliteEnabled}><Satellite/><span><strong>Cloud imagery</strong><small>Recent GOES imagery · regional coverage</small></span><b>{satelliteEnabled ? 'ON' : 'OFF'}</b></button>
             </div>
             {migrationEnabled && <div className="active-domain-note migration-domain-note"><Bird/><span><strong>Bird movement patterns</strong><small>{migrationStatus === 'live' ? `${migration?.corridors.length ?? 0} notable species shifts from ${migration?.recentRecordCount ?? 0} recent observations` : migrationStatus === 'cached' ? 'Showing the most recent saved migration sample' : migrationStatus === 'error' ? 'Bird observations are temporarily unavailable' : 'Finding recent bird movement patterns…'}</small></span>{migration?.corridors.length ? <div className="taxon-strip" aria-label="Migration species">{migration.corridors.slice(0, 10).map((corridor) => <button key={corridor.id} className={migrationFocus?.id === corridor.id ? 'active' : ''} onClick={() => { selectMigration(corridor); setActivePanel(undefined) }}>{corridor.media && <img src={corridor.media.url} alt="" loading="lazy" referrerPolicy="no-referrer"/>}<strong>{corridor.commonName ?? corridor.species}</strong><small>Observations shifted {corridor.direction} · {corridor.recentObservations} recent</small></button>)}</div> : null}{migrationFocus?.media && <a className="media-attribution" href={migrationFocus.media.sourceUrl} target="_blank" rel="noreferrer">Photo: {migrationFocus.media.creator} · {migrationFocus.media.license}</a>}<p>These are changes in observation patterns, not tracks of individual birds. Weather may coincide with movement but does not prove why it occurred.</p>{migrationFocus && <details className="domain-science"><summary>Show the science</summary><dl><div><dt>Scientific name</dt><dd>{migrationFocus.species}</dd></div><div><dt>Derived center shift</dt><dd>{migrationFocus.distanceKm.toLocaleString()} km {migrationFocus.direction}</dd></div><div><dt>Sampling windows</dt><dd>Recent 14 days vs previous 14 days</dd></div></dl></details>}</div>}
             {lifeEnabled && <div className="active-domain-note life-domain-note"><PawPrint/><span><strong>Life across Earth</strong><small>{lifeStatus === 'live' ? `${life?.taxa.length ?? 0} species groups summarized from ${life?.recordCount ?? 0} recent records` : lifeStatus === 'cached' ? 'Showing saved biodiversity context' : lifeStatus === 'error' ? 'Biodiversity observations are temporarily unavailable' : 'Finding recent wildlife and plant observations…'}</small></span>{life?.taxa.length ? <div className="taxon-strip" aria-label="Observed taxa">{life.taxa.slice(0, 10).map((taxon) => <button key={taxon.id} className={lifeFocus?.id === taxon.id ? 'active' : ''} onClick={() => { selectLife(taxon); setActivePanel(undefined) }}>{taxon.media && <img src={taxon.media.url} alt="" loading="lazy" referrerPolicy="no-referrer"/>}<strong>{taxon.commonName ?? taxon.scientificName}</strong><small>{taxon.commonName ? taxon.scientificName : taxon.taxonomicClass ?? taxon.kingdom} · {taxon.observations} records</small></button>)}</div> : null}{lifeFocus?.media && <a className="media-attribution" href={lifeFocus.media.sourceUrl} target="_blank" rel="noreferrer">Photo: {lifeFocus.media.creator} · {lifeFocus.media.license}</a>}<p>{life?.methodology ?? 'Records are grouped into broad regions to protect sensitive wildlife locations.'}</p></div>}
@@ -304,22 +266,21 @@ export default function App() {
           {activePanel === 'time' && <><div className="time-panel"><TimeControl value={store.timeWindow} onChange={(window) => { setReplayCutoff(undefined); store.setTimeWindow(window) }}/></div><ReplayControl signals={windowSignals} cutoff={replayCutoff} onCutoff={setReplayCutoff}/><p className="control-note">Replay reveals observations by their authoritative timestamps. It does not interpolate movement or imply causation.</p></>}
         </section>
       </div>}
-      {visualMode === 'globe' && !store.globeReady && <div className="globe-loading"><LoaderCircle/><span>Initializing Earth</span></div>}
       {replayCutoff && <button className="replay-indicator" onClick={() => { setReplayCutoff(undefined); setActivePanel('time') }}><span>REPLAY · {new Date(replayCutoff).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><strong>Return live</strong></button>}
     </>
-  ), [activateEarthLens, activeEarthLens, activeLayerCount, activePanel, ambientMode, atmosphere, autoRotate, enabledLayers, geographicView, globeReady, handleGlobeViewChange, handleMapViewChange, labels, leadDiscovery, life, lifeEnabled, lifeFocus, lifeStatus, lightingMode, liveSourceCount, mapTheme, migration, migrationEnabled, migrationFocus, migrationStatus, performanceMode, radarEnabled, replayCutoff, returnToGlobe, satelliteEnabled, selectDiscovery, selectEcologicalCell, selectedSignal, selectLife, selectMigration, selectPlace, selectSignal, selectSignalCluster, significantCount, store, toggleVisualLayer, visibleSignals, visualMode, webGLAvailable, windowSignals])
+  ), [activateEarthLens, activeEarthLens, activeIntelligence?.location, activeLayerCount, activePanel, ambientMode, enabledLayers, geographicView, handleMapViewChange, leadDiscovery, life, lifeEnabled, lifeFocus, lifeStatus, liveSourceCount, mapTheme, migration, migrationEnabled, migrationFocus, migrationStatus, performanceMode, radarEnabled, replayCutoff, satelliteEnabled, selectDiscovery, selectEcologicalCell, selectedSignal, selectLife, selectMigration, selectSignal, selectSignalById, selectSignalCluster, significantCount, store, toggleVisualLayer, visibleSignals, webGLAvailable, windowSignals])
 
   return (
     <div className={`app-shell ${ambientActive && ambientIdle ? 'ambient-idle' : ''}`}>
       <TopBar offline={!online} demo={store.demoMode || store.signals.some((signal) => signal.source.freshness === 'demo')} onSettings={() => store.setView('settings')}/>
-      {store.view === 'earth' && earthContent}
+      <div className={`earth-route ${store.view === 'earth' ? 'active' : ''}`} aria-hidden={store.view !== 'earth'}>{earthContent}</div>
       {store.view === 'discover' && <DiscoverPage discoveries={store.discoveries} signals={store.signals} selectedId={store.selectedDiscoveryId} onOpen={(id) => store.selectDiscovery(id || undefined)} onSave={store.saveDiscovery} onNotes={store.updateCaseNotes} onRemove={async (id) => { await store.removeCase(id); store.selectDiscovery(undefined); store.setView('cases') }}/>}
-      {store.view === 'cases' && <CasesPage discoveries={store.discoveries} watches={store.watches} signals={store.signals} onOpen={(id) => store.selectDiscovery(id)} onObserve={store.observePlace} onUnwatch={store.unwatchPlace}/>}
+      {store.view === 'cases' && <CasesPage discoveries={store.discoveries} watches={store.watches} signals={store.signals} onOpen={(id) => store.selectDiscovery(id)} onObserve={(place) => { setSelectedIntelligence(searchedPlaceToIntelligence(place)); setGeographicView({ latitude: place.latitude, longitude: place.longitude, altitude: .35 }); store.setView('earth') }} onUnwatch={store.unwatchPlace}/>}
       {store.view === 'observer' && <ObserverPage key={String(store.observerPlace?.id ?? 'observer')} signals={store.signals} initialPlace={store.observerPlace} watches={store.watches} onWatch={store.watchPlace} onUnwatch={store.unwatchPlace} onSelectIntelligence={setSelectedIntelligence}/>}
       {store.view === 'settings' && (
-        <SettingsPage layers={store.layerVisibility} statuses={store.statuses} demoMode={store.demoMode} firmsConfigured={store.firmsConfigured} performanceMode={performanceMode} autoRotate={autoRotate} atmosphere={atmosphere} labels={labels} mapTheme={mapTheme} informationDensity={informationDensity} onToggle={store.toggleLayer} onDemoMode={store.setDemoMode} onFirmsKey={store.setFirmsKey} onRefresh={store.refresh} onPerformance={setPerformanceMode} onAutoRotate={setAutoRotate} onAtmosphere={setAtmosphere} onLabels={setLabels} onMapTheme={setMapTheme} onInformationDensity={setInformationDensity} onErase={async () => { await store.eraseLocalData(); setEnabledLayers(new Set(livingEarthLayerIds)); setActiveEarthLens('world'); setLightingMode('live'); setPerformanceMode('automatic'); setAutoRotate(true); setAtmosphere(true); setLabels(true); setMapTheme('dark'); setInformationDensity('standard') }}/>
+        <SettingsPage layers={store.layerVisibility} statuses={store.statuses} demoMode={store.demoMode} firmsConfigured={store.firmsConfigured} performanceMode={performanceMode} mapTheme={mapTheme} informationDensity={informationDensity} onToggle={store.toggleLayer} onDemoMode={store.setDemoMode} onFirmsKey={store.setFirmsKey} onRefresh={store.refresh} onPerformance={setPerformanceMode} onMapTheme={setMapTheme} onInformationDensity={setInformationDensity} onErase={async () => { await store.eraseLocalData(); setEnabledLayers(new Set(livingEarthLayerIds)); setActiveEarthLens('world'); setPerformanceMode('automatic'); setMapTheme('dark'); setInformationDensity('standard') }}/>
       )}
-      {activeIntelligence && store.view !== 'settings' && <IntelligenceInspector object={activeIntelligence} density={informationDensity} onClose={closeIntelligence} onWatch={watchIntelligence} onObserve={observeIntelligence} onSelectRelated={setSelectedIntelligence}/>}
+      {activeIntelligence && store.view === 'earth' && <IntelligenceInspector object={activeIntelligence} density={informationDensity} onClose={closeIntelligence} onWatch={watchIntelligence} onSelectRelated={setSelectedIntelligence}/>}
       {store.view !== 'settings' && (
         <BottomNav view={store.view} onChange={(view) => { closeIntelligence(); store.setView(view) }}/>
       )}

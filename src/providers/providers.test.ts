@@ -55,7 +55,8 @@ describe('official provider normalization', () => {
     const [signal] = normalizeFirmsCsv(csv, Date.parse('2026-08-15T20:00:00Z'))
     expect(signal?.type).toBe('fire')
     expect(signal?.attributes.fireRadiativePowerMw).toBe(44.6)
-    expect(signal?.confidence).toBe(.94)
+    expect(signal?.confidence).toBeUndefined()
+    expect(signal?.attributes.confidenceLabel).toBe('high')
     expect(signal?.provenance[0]?.description).toContain('thermal detection')
   })
 

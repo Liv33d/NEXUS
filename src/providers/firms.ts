@@ -24,10 +24,18 @@ function parseAcquired(date: string, time: string): number {
   return Number.isFinite(parsed) ? parsed : Date.now()
 }
 
-function confidenceValue(value: string): number {
+function confidenceWeight(value: string): number {
   const numeric = Number(value)
   if (Number.isFinite(numeric)) return Math.max(0, Math.min(1, numeric / 100))
-  return value.toLowerCase() === 'h' ? .94 : value.toLowerCase() === 'n' ? .76 : .48
+  return value.toLowerCase() === 'h' ? 1 : value.toLowerCase() === 'n' ? .7 : .4
+}
+
+function confidenceLabel(value: string): string {
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'h') return 'high'
+  if (normalized === 'n') return 'nominal'
+  if (normalized === 'l') return 'low'
+  return value.trim() ? `provider category ${value.trim()}` : 'not supplied'
 }
 
 export function normalizeFirmsCsv(csv: string, retrievedAt = Date.now()): Signal[] {
@@ -44,7 +52,8 @@ export function normalizeFirmsCsv(csv: string, retrievedAt = Date.now()): Signal
     const latitude = Number(cell(row, 'latitude'))
     const longitude = Number(cell(row, 'longitude'))
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return []
-    const confidence = confidenceValue(cell(row, 'confidence'))
+    const confidence = confidenceWeight(cell(row, 'confidence'))
+    const detectionConfidence = confidenceLabel(cell(row, 'confidence'))
     const frp = Number(cell(row, 'frp'))
     const brightness = Number(cell(row, 'bright_ti4') || cell(row, 'brightness'))
     const timestamp = parseAcquired(cell(row, 'acq_date'), cell(row, 'acq_time'))
@@ -56,13 +65,12 @@ export function normalizeFirmsCsv(csv: string, retrievedAt = Date.now()): Signal
       source: { provider: 'firms', dataset: 'NASA FIRMS VIIRS NOAA-20 NRT', url: 'https://firms.modaps.eosdis.nasa.gov/', retrievedAt, freshness: 'delayed' },
       type: 'fire',
       title: `Thermal detection — ${instrument} / ${satellite}`,
-      summary: `Satellite thermal anomaly with ${Math.round(confidence * 100)}% source confidence${Number.isFinite(frp) ? ` and ${frp.toFixed(1)} MW fire radiative power` : ''}. A thermal detection does not always indicate an uncontrolled wildfire.`,
+      summary: `Satellite thermal anomaly with ${detectionConfidence} detection confidence${Number.isFinite(frp) ? ` and ${frp.toFixed(1)} MW fire radiative power` : ''}. A thermal detection does not always indicate an uncontrolled wildfire.`,
       timestamp,
       location: { latitude, longitude },
       severity,
-      confidence,
       entities: [{ id: `satellite-${satellite.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, type: 'SATELLITE', name: satellite }],
-      attributes: { satellite, instrument, brightness: Number.isFinite(brightness) ? brightness : undefined, fireRadiativePowerMw: Number.isFinite(frp) ? frp : undefined, confidence: cell(row, 'confidence'), dayNight: cell(row, 'daynight'), scan: cell(row, 'scan'), track: cell(row, 'track') },
+      attributes: { satellite, instrument, brightness: Number.isFinite(brightness) ? brightness : undefined, fireRadiativePowerMw: Number.isFinite(frp) ? frp : undefined, confidence: cell(row, 'confidence'), confidenceLabel: detectionConfidence, dayNight: cell(row, 'daynight'), scan: cell(row, 'scan'), track: cell(row, 'track') },
       provenance: [{ label: 'OPEN_DATA', description: 'Near-real-time satellite thermal detection from NASA FIRMS. Detection is observational and may require verification.', sourceUrl: 'https://firms.modaps.eosdis.nasa.gov/' }],
       expiresAt: retrievedAt + 7 * 86400000,
     })]
