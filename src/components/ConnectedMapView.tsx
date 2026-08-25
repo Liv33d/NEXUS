@@ -16,6 +16,10 @@ interface Props {
   signals: Signal[]
   selected?: Signal
   onSelect(signal: Signal): void
+  onSelectSignalCluster?(signals: Signal[], location: { latitude: number; longitude: number }): void
+  onSelectMigration?(corridor: MigrationSnapshot['corridors'][number]): void
+  onSelectLife?(taxon: LifeGlobeSnapshot['taxa'][number]): void
+  onSelectEcologicalCell?(cell: { id: string; latitude: number; longitude: number; observations: number; domain: 'migration' | 'life' }): void
   radarEnabled?: boolean
   satelliteEnabled?: boolean
   mapTheme?: 'dark' | 'street'
@@ -57,11 +61,12 @@ function migrationTracks(snapshot?: MigrationSnapshot): FeatureCollection<LineSt
   })) }
 }
 
-function lifeDensity(migration?: MigrationSnapshot, life?: LifeGlobeSnapshot): FeatureCollection<Point, { observations: number; domain: 'migration' | 'life' }> {
+function lifeDensity(migration?: MigrationSnapshot, life?: LifeGlobeSnapshot): FeatureCollection<Point, { id: string; observations: number; domain: 'migration' | 'life'; itemKind: 'cell' | 'taxon' }> {
   return { type: 'FeatureCollection', features: [
-    ...(migration?.cells ?? []).map((cell) => ({ type: 'Feature' as const, properties: { observations: cell.observations, domain: 'migration' as const }, geometry: { type: 'Point' as const, coordinates: [cell.longitude, cell.latitude] } })),
-    ...(life?.cells ?? []).map((cell) => ({ type: 'Feature' as const, properties: { observations: cell.observations, domain: 'life' as const }, geometry: { type: 'Point' as const, coordinates: [cell.longitude, cell.latitude] } })),
-  ].slice(0, 500) }
+    ...(migration?.cells ?? []).map((cell) => ({ type: 'Feature' as const, properties: { id: cell.id, observations: cell.observations, domain: 'migration' as const, itemKind: 'cell' as const }, geometry: { type: 'Point' as const, coordinates: [cell.longitude, cell.latitude] } })),
+    ...(life?.cells ?? []).map((cell) => ({ type: 'Feature' as const, properties: { id: cell.id, observations: cell.observations, domain: 'life' as const, itemKind: 'cell' as const }, geometry: { type: 'Point' as const, coordinates: [cell.longitude, cell.latitude] } })),
+    ...(life?.taxa ?? []).map((taxon) => ({ type: 'Feature' as const, properties: { id: taxon.id, observations: taxon.observations, domain: 'life' as const, itemKind: 'taxon' as const }, geometry: { type: 'Point' as const, coordinates: [taxon.longitude, taxon.latitude] } })),
+  ].sort((a, b) => b.properties.observations - a.properties.observations).slice(0, 500) }
 }
 
 function addWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satellite', tiles: string[], opacity: number, attribution?: string) {
@@ -75,11 +80,17 @@ function removeWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satell
   if (map.getSource(id)) map.removeSource(id)
 }
 
-export default function ConnectedMapView({ signals, selected, onSelect, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestGlobe, migration, life }: Props) {
+export default function ConnectedMapView({ signals, selected, onSelect, onSelectSignalCluster, onSelectMigration, onSelectLife, onSelectEcologicalCell, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestGlobe, migration, life }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const signalsRef = useRef(signals)
   const onSelectRef = useRef(onSelect)
+  const onSelectSignalClusterRef = useRef(onSelectSignalCluster)
+  const onSelectMigrationRef = useRef(onSelectMigration)
+  const onSelectLifeRef = useRef(onSelectLife)
+  const onSelectEcologicalCellRef = useRef(onSelectEcologicalCell)
+  const migrationRef = useRef(migration)
+  const lifeRef = useRef(life)
   const onViewChangeRef = useRef(onViewChange)
   const onRequestGlobeRef = useRef(onRequestGlobe)
   const initialViewRef = useRef(initialView)
@@ -100,7 +111,7 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
     return () => window.clearInterval(timer)
   }, [radarEnabled, satelliteEnabled])
 
-  useEffect(() => { signalsRef.current = signals; onSelectRef.current = onSelect; onViewChangeRef.current = onViewChange; onRequestGlobeRef.current = onRequestGlobe }, [onRequestGlobe, onSelect, onViewChange, signals])
+  useEffect(() => { signalsRef.current = signals; onSelectRef.current = onSelect; onSelectSignalClusterRef.current = onSelectSignalCluster; onSelectMigrationRef.current = onSelectMigration; onSelectLifeRef.current = onSelectLife; onSelectEcologicalCellRef.current = onSelectEcologicalCell; migrationRef.current = migration; lifeRef.current = life; onViewChangeRef.current = onViewChange; onRequestGlobeRef.current = onRequestGlobe }, [life, migration, onRequestGlobe, onSelect, onSelectEcologicalCell, onSelectLife, onSelectMigration, onSelectSignalCluster, onViewChange, signals])
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -125,9 +136,9 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
       map.addSource('nexus-tracks', { type: 'geojson', data: forecastTracks(signalsRef.current) })
       map.addLayer({ id: 'nexus-track-lines', type: 'line', source: 'nexus-tracks', paint: { 'line-color': '#d7f0ff', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': .9 } })
       map.addSource('nexus-life-density', { type: 'geojson', data: lifeDensity() })
-      map.addLayer({ id: 'nexus-life-density', type: 'circle', source: 'nexus-life-density', paint: { 'circle-color': ['match', ['get', 'domain'], 'migration', '#a4ffcc', '#7edfd4'], 'circle-radius': ['interpolate', ['linear'], ['get', 'observations'], 1, 5, 30, 18], 'circle-opacity': .18, 'circle-blur': .45 } })
+      map.addLayer({ id: 'nexus-life-density', type: 'circle', source: 'nexus-life-density', paint: { 'circle-color': ['match', ['get', 'domain'], 'migration', '#9be0a4', '#69bfc0'], 'circle-radius': ['interpolate', ['linear'], ['get', 'observations'], 1, 5, 30, 15], 'circle-opacity': ['match', ['get', 'itemKind'], 'taxon', .78, .2], 'circle-blur': ['match', ['get', 'itemKind'], 'taxon', 0, .42], 'circle-stroke-width': ['match', ['get', 'itemKind'], 'taxon', 1.2, 0], 'circle-stroke-color': '#ecfff5' } })
       map.addSource('nexus-migration', { type: 'geojson', data: migrationTracks() })
-      map.addLayer({ id: 'nexus-migration', type: 'line', source: 'nexus-migration', paint: { 'line-color': '#a4ffcc', 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 1.1, 8, 2.6], 'line-opacity': .62, 'line-dasharray': [2, 2] } })
+      map.addLayer({ id: 'nexus-migration', type: 'line', source: 'nexus-migration', paint: { 'line-color': '#9be0a4', 'line-width': ['interpolate', ['linear'], ['zoom'], 1, .7, 8, 2], 'line-opacity': .5, 'line-dasharray': [2, 3] } })
       map.addLayer({ id: 'nexus-clusters', type: 'circle', source: 'nexus-signals', filter: ['has', 'point_count'], paint: { 'circle-color': ['step', ['get', 'point_count'], '#315f5d', 25, '#367d77', 100, '#d08d55'], 'circle-radius': ['step', ['get', 'point_count'], 15, 25, 20, 100, 27], 'circle-stroke-width': 1.5, 'circle-stroke-color': '#bffff6', 'circle-opacity': .88 } })
       map.addLayer({ id: 'nexus-cluster-count', type: 'symbol', source: 'nexus-signals', filter: ['has', 'point_count'], layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 10 }, paint: { 'text-color': '#efffff' } })
       map.addLayer({ id: 'nexus-signal-halo', type: 'circle', source: 'nexus-signals', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'circle-radius': ['interpolate', ['linear'], ['get', 'severity'], 0, 7, 100, 17], 'circle-opacity': .14 } })
@@ -137,14 +148,41 @@ export default function ConnectedMapView({ signals, selected, onSelect, radarEna
         const signal = signalsRef.current.find((item) => item.id === id)
         if (signal) onSelectRef.current(signal)
       })
+      map.on('click', 'nexus-migration', (event) => {
+        const id = event.features?.[0]?.properties?.id
+        const corridor = migrationRef.current?.corridors.find((item) => item.id === id)
+        if (corridor) onSelectMigrationRef.current?.(corridor)
+      })
+      map.on('click', 'nexus-life-density', (event) => {
+        const properties = event.features?.[0]?.properties
+        const id = properties?.id
+        if (!id) return
+        if (properties.itemKind === 'taxon') {
+          const taxon = lifeRef.current?.taxa.find((item) => item.id === id)
+          if (taxon) onSelectLifeRef.current?.(taxon)
+          return
+        }
+        const domain = properties.domain === 'migration' ? 'migration' : 'life'
+        const cell = domain === 'migration' ? migrationRef.current?.cells.find((item) => item.id === id) : lifeRef.current?.cells.find((item) => item.id === id)
+        if (cell) onSelectEcologicalCellRef.current?.({ ...cell, domain })
+      })
       map.on('click', 'nexus-clusters', (event) => {
         const feature = event.features?.[0]
         const clusterId = feature?.properties?.cluster_id
         if (!feature || clusterId === undefined || feature.geometry.type !== 'Point') return
         const center = feature.geometry.coordinates as [number, number]
-        void (map.getSource('nexus-signals') as GeoJSONSource).getClusterExpansionZoom(clusterId).then((zoom) => map.easeTo({ center, zoom }))
+        const source = map.getSource('nexus-signals') as GeoJSONSource
+        void Promise.all([source.getClusterExpansionZoom(clusterId), source.getClusterLeaves(clusterId, 12, 0)]).then(([zoom, leaves]) => {
+          const clusteredSignals = leaves.flatMap((leaf) => {
+            const id = leaf.properties?.id
+            const signal = signalsRef.current.find((item) => item.id === id)
+            return signal ? [signal] : []
+          })
+          if (clusteredSignals.length) onSelectSignalClusterRef.current?.(clusteredSignals, { latitude: center[1], longitude: center[0] })
+          map.easeTo({ center, zoom: Math.min(zoom, map.getZoom() + 2), duration: 700 })
+        })
       })
-      for (const layer of ['nexus-signal-points', 'nexus-clusters']) {
+      for (const layer of ['nexus-signal-points', 'nexus-clusters', 'nexus-migration', 'nexus-life-density']) {
         map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = '' })
       }

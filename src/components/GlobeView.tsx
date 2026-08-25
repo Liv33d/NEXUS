@@ -14,6 +14,10 @@ interface Props {
   signals: Signal[]
   selected?: Signal
   onSelect(signal: Signal): void
+  onSelectMigration?(corridor: MigrationSnapshot['corridors'][number]): void
+  onSelectLife?(taxon: LifeGlobeTaxon): void
+  onSelectEcologicalCell?(cell: { id: string; latitude: number; longitude: number; observations: number; domain: 'migration' | 'life' }): void
+  onSelectPlace?(city: GlobeCity): void
   onReady(): void
   batterySaver?: boolean
   radarEnabled?: boolean
@@ -36,6 +40,12 @@ interface Props {
 interface EarthLabel { name: string; lat: number; lng: number; kind: 'land' | 'water' | 'place'; population?: number; capital?: boolean }
 interface GlobeViewpoint { lat: number; lng: number; altitude: number }
 interface GlobeRing { id: string; lat: number; lng: number; color: string; maxRadius: number; repeatPeriod: number }
+interface EcologicalCell { id: string; latitude: number; longitude: number; observations: number; domain: 'migration' | 'life' }
+type GlobePoint = Signal | (LifeGlobeTaxon & { markerKind: 'life' })
+
+function isLifePoint(point: GlobePoint): point is LifeGlobeTaxon & { markerKind: 'life' } {
+  return 'markerKind' in point && point.markerKind === 'life'
+}
 
 const WORLD_LABELS: EarthLabel[] = [
   { name: 'NORTH AMERICA', lat: 47, lng: -103, kind: 'land' }, { name: 'SOUTH AMERICA', lat: -18, lng: -59, kind: 'land' },
@@ -74,18 +84,16 @@ const typeColor: Record<Signal['type'], string> = {
 function createEarthMaterial() {
   const loader = new TextureLoader().setCrossOrigin('anonymous')
   const dayTexture = loader.load(`${import.meta.env.BASE_URL}earth-blue-marble.jpg`)
-  const nightTexture = loader.load(`${import.meta.env.BASE_URL}earth-city-lights.jpg`)
   dayTexture.colorSpace = SRGBColorSpace
-  nightTexture.colorSpace = SRGBColorSpace
   return new ShaderMaterial({
     uniforms: {
-      dayTexture: { value: dayTexture }, nightTexture: { value: nightTexture },
+      dayTexture: { value: dayTexture },
       sunPosition: { value: new Vector2() }, lightingMode: { value: 0 },
     },
     vertexShader: `varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
     fragmentShader: `
       #define PI 3.141592653589793
-      uniform sampler2D dayTexture; uniform sampler2D nightTexture; uniform vec2 sunPosition; uniform float lightingMode;
+      uniform sampler2D dayTexture; uniform vec2 sunPosition; uniform float lightingMode;
       varying vec2 vUv;
       float rad(float value){return value*PI/180.0;}
       void main(){
@@ -93,15 +101,14 @@ function createEarthMaterial() {
         float sunLon=rad(sunPosition.x);float sunLat=rad(sunPosition.y);
         float light=sin(surfaceLat)*sin(sunLat)+cos(surfaceLat)*cos(sunLat)*cos(surfaceLon-sunLon);
         float daylight=lightingMode>1.5?0.0:(lightingMode>.5?1.0:smoothstep(-.14,.16,light));
-        vec4 day=texture2D(dayTexture,vUv);vec4 night=texture2D(nightTexture,vUv);
+        vec4 day=texture2D(dayTexture,vUv);
         vec3 dayWorld=pow(max(day.rgb,vec3(0.0)),vec3(.72))*1.22;
         dayWorld=mix(vec3(dot(dayWorld,vec3(.2126,.7152,.0722))),dayWorld,1.12);
         dayWorld=clamp(dayWorld,0.0,1.0);
         // Night remains a readable low-light Earth. Astronomical darkness should
         // communicate time—not erase geography on a phone display.
-        vec3 nightTerrain=dayWorld*vec3(.31,.34,.42);
-        vec3 cityLights=pow(max(night.rgb,vec3(0.0)),vec3(.78))*vec3(1.34,1.16,.84)*1.72;
-        vec3 nightWorld=clamp(nightTerrain+cityLights,0.0,1.0);
+        vec3 nightTerrain=dayWorld*vec3(.34,.38,.50);
+        vec3 nightWorld=clamp(nightTerrain,0.0,1.0);
         vec3 color=mix(nightWorld,dayWorld,daylight);
         color+=dayWorld*max(light,0.0)*daylight*.08;
         gl_FragColor=vec4(color,1.0);
@@ -109,7 +116,7 @@ function createEarthMaterial() {
   })
 }
 
-function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestSolar, migration, migrationFocus, life, lifeFocus, layerFocus = 'world' }: Props) {
+function GlobeView({ signals, selected, onSelect, onSelectMigration, onSelectLife, onSelectEcologicalCell, onSelectPlace, onReady, batterySaver = false, radarEnabled = false, satelliteEnabled = false, lightingMode = 'live', autoRotate = true, atmosphereEnabled = true, labelsEnabled = true, qualityMode = 'automatic', initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestSolar, migration, migrationFocus, life, lifeFocus, layerFocus = 'world' }: Props) {
   const ref = useRef<GlobeMethods | undefined>(undefined)
   const hostRef = useRef<HTMLDivElement>(null)
   const onReadyRef = useRef(onReady)
@@ -127,9 +134,23 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
   const [layerReference, setLayerReference] = useState(Date.now)
   const earthMaterial = useMemo(createEarthMaterial, [])
   const labels = useMemo(() => cityLabelsForView(viewpoint), [viewpoint])
-  const points = useMemo(() => signals.filter((signal) => signal.location).slice(0, batterySaver ? 350 : 1200), [signals, batterySaver])
+  const points = useMemo(() => {
+    const altitudeLimit = viewpoint.altitude > 1.25 ? 220 : viewpoint.altitude > .62 ? 520 : viewpoint.altitude > .28 ? 900 : 1200
+    const modeLimit = batterySaver ? Math.min(altitudeLimit, 260) : qualityMode === 'quality' ? Math.round(altitudeLimit * 1.25) : altitudeLimit
+    const now = Date.now()
+    return signals.filter((signal) => signal.location).sort((a, b) => {
+      const score = (signal: Signal) => (signal.id === selected?.id ? 1000 : 0) + (signal.severity ?? 0) * 2 + (now - signal.timestamp < 3600000 ? 20 : 0) + (['earthquake', 'fire', 'weather'].includes(signal.type) ? 14 : 0)
+      return score(b) - score(a) || b.timestamp - a.timestamp
+    }).slice(0, modeLimit)
+  }, [batterySaver, qualityMode, selected?.id, signals, viewpoint.altitude])
+  const displayPoints = useMemo<GlobePoint[]>(() => [
+    ...points,
+    ...(life?.taxa ?? []).slice(0, batterySaver ? 8 : viewpoint.altitude > 1.1 ? 12 : 32).map((taxon) => ({ ...taxon, markerKind: 'life' as const })),
+  ], [batterySaver, life, points, viewpoint.altitude])
   const rings = useMemo<GlobeRing[]>(() => {
-    const notable = points.filter((signal) => (signal.severity ?? 0) >= 58).slice(0, batterySaver ? 8 : 24)
+    const ringLimit = batterySaver ? 6 : viewpoint.altitude > 1.25 ? 8 : viewpoint.altitude > .62 ? 14 : 24
+    const ecologyRingLimit = batterySaver ? 2 : viewpoint.altitude > 1.25 ? 2 : viewpoint.altitude > .62 ? 5 : 10
+    const notable = points.filter((signal) => (signal.severity ?? 0) >= 58).slice(0, ringLimit)
     const signalRings = (selected?.location && !notable.some((signal) => signal.id === selected.id) ? [selected, ...notable] : notable)
       .map((signal) => ({
         id: signal.id,
@@ -142,7 +163,7 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
     const migrationRings = (migration?.cells ?? [])
       .slice()
       .sort((a, b) => b.observations - a.observations)
-      .slice(0, batterySaver ? 4 : 12)
+      .slice(0, ecologyRingLimit)
       .map((cell) => ({
         id: `migration-${cell.id}`,
         lat: cell.latitude,
@@ -154,11 +175,21 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
     const lifeRings = (life?.cells ?? [])
       .slice()
       .sort((a, b) => b.observations - a.observations)
-      .slice(0, batterySaver ? 4 : 12)
+      .slice(0, ecologyRingLimit)
       .map((cell) => ({ id: `life-${cell.id}`, lat: cell.latitude, lng: cell.longitude, color: '#7edfd4', maxRadius: Math.min(4.2, 1.6 + Math.log2(cell.observations + 1)), repeatPeriod: 2700 }))
     return [...signalRings, ...migrationRings, ...lifeRings]
-  }, [batterySaver, life, migration, points, selected])
-  const ecologicalCells = [...(migration?.cells ?? []), ...(life?.cells ?? [])]
+  }, [batterySaver, life, migration, points, selected, viewpoint.altitude])
+  const visibleMigrationCorridors = useMemo(() => {
+    const limit = batterySaver ? 8 : viewpoint.altitude > 1.25 ? 12 : viewpoint.altitude > .62 ? 28 : 60
+    return (migration?.corridors ?? []).slice().sort((a, b) => b.recentObservations - a.recentObservations).slice(0, limit)
+  }, [batterySaver, migration, viewpoint.altitude])
+  const ecologicalCells = useMemo<EcologicalCell[]>(() => {
+    const limit = batterySaver ? 30 : viewpoint.altitude > 1.25 ? 36 : viewpoint.altitude > .62 ? 72 : 140
+    return [
+      ...(migration?.cells ?? []).map((cell) => ({ ...cell, domain: 'migration' as const })),
+      ...(life?.cells ?? []).map((cell) => ({ ...cell, domain: 'life' as const })),
+    ].sort((a, b) => b.observations - a.observations).slice(0, limit)
+  }, [batterySaver, life, migration, viewpoint.altitude])
   const forecastPaths = useMemo(() => signals.flatMap((signal) => {
     const value = signal.attributes.forecastTrack
     if (!Array.isArray(value)) return []
@@ -232,7 +263,6 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
 
   useEffect(() => () => {
     earthMaterial.uniforms.dayTexture!.value.dispose()
-    earthMaterial.uniforms.nightTexture!.value.dispose()
     earthMaterial.dispose()
   }, [earthMaterial])
 
@@ -386,31 +416,34 @@ function GlobeView({ signals, selected, onSelect, onReady, batterySaver = false,
       labelColor={(item) => (item as EarthLabel).kind === 'water' ? 'rgba(145,211,230,.82)' : 'rgba(245,251,250,.92)'}
       labelSize={(item) => (item as EarthLabel).kind === 'place' ? Math.max(0.11, Math.min(0.23, 0.12 + Math.log10(Math.max((item as EarthLabel).population ?? 1, 1)) / 60)) : (item as EarthLabel).kind === 'water' ? 0.36 : 0.5}
       labelAltitude={0.013} labelIncludeDot={(item) => (item as EarthLabel).kind === 'place'} labelDotRadius={(item) => (item as EarthLabel).capital ? 0.065 : 0.045} labelResolution={3} labelsTransitionDuration={180}
+      onLabelClick={(item) => { const label = item as EarthLabel; if (label.kind !== 'place') return; const city = GLOBE_CITIES.find((candidate) => candidate.name === label.name && candidate.lat === label.lat && candidate.lng === label.lng); if (city) onSelectPlace?.(city) }}
       polygonsData={labelsEnabled ? countries : []} polygonGeoJsonGeometry={(item) => (item as Feature<Polygon | MultiPolygon>).geometry as never}
       polygonCapColor={() => 'rgba(0,0,0,0)'} polygonSideColor={() => 'rgba(0,0,0,0)'} polygonStrokeColor={() => 'rgba(206,238,235,.22)'} polygonAltitude={0.0025} polygonsTransitionDuration={0}
-      pointsData={points} pointLat={(item) => (item as Signal).location!.latitude} pointLng={(item) => (item as Signal).location!.longitude}
-      pointAltitude={(item) => 0.008 + ((item as Signal).severity ?? 10) / 5000} pointRadius={(item) => 0.12 + ((item as Signal).severity ?? 10) / 190}
-      pointColor={(item) => `${typeColor[(item as Signal).type]}${layerFocus === 'migration' || layerFocus === 'animals' ? '66' : 'ff'}`} pointLabel={() => ''} onPointClick={(item) => onSelect(item as Signal)}
+      pointsData={displayPoints} pointLat={(item) => isLifePoint(item as GlobePoint) ? (item as LifeGlobeTaxon).latitude : (item as Signal).location!.latitude} pointLng={(item) => isLifePoint(item as GlobePoint) ? (item as LifeGlobeTaxon).longitude : (item as Signal).location!.longitude}
+      pointAltitude={(item) => isLifePoint(item as GlobePoint) ? .016 : 0.008 + ((item as Signal).severity ?? 10) / 5000} pointRadius={(item) => isLifePoint(item as GlobePoint) ? Math.min(.42, .16 + Math.log2((item as LifeGlobeTaxon).observations + 1) / 18) : 0.12 + ((item as Signal).severity ?? 10) / 190}
+      pointColor={(item) => isLifePoint(item as GlobePoint) ? '#b7e77c' : `${typeColor[(item as Signal).type]}${layerFocus === 'migration' || layerFocus === 'animals' ? '66' : 'ff'}`} pointLabel={() => ''} onPointClick={(item) => { const point = item as GlobePoint; if (isLifePoint(point)) onSelectLife?.(point); else onSelect(point) }}
       ringsData={rings} ringLat={(item) => (item as GlobeRing).lat} ringLng={(item) => (item as GlobeRing).lng}
       ringColor={(item: object) => (item as GlobeRing).color} ringMaxRadius={(item) => (item as GlobeRing).maxRadius}
       ringPropagationSpeed={batterySaver ? 0 : 0.55} ringRepeatPeriod={(item: object) => batterySaver ? Infinity : (item as GlobeRing).repeatPeriod}
       pathsData={forecastPaths} pathPoints={(item) => (item as { points: Array<{ lat: number; lng: number }> }).points}
       pathPointLat={(point) => (point as { lat: number }).lat} pathPointLng={(point) => (point as { lng: number }).lng}
       pathColor={() => ['rgba(160,220,255,.95)', 'rgba(143,245,232,.42)']} pathStroke={1.2} pathDashLength={0.08} pathDashGap={0.045} pathDashAnimateTime={batterySaver ? 0 : 5200} pathPointAlt={() => 0.018}
-      arcsData={migration?.corridors ?? []}
+      arcsData={visibleMigrationCorridors}
       arcStartLat={(item) => (item as MigrationSnapshot['corridors'][number]).startLatitude}
       arcStartLng={(item) => (item as MigrationSnapshot['corridors'][number]).startLongitude}
       arcEndLat={(item) => (item as MigrationSnapshot['corridors'][number]).endLatitude}
       arcEndLng={(item) => (item as MigrationSnapshot['corridors'][number]).endLongitude}
-      arcColor={() => ['rgba(164,255,204,.34)', 'rgba(199,255,222,1)']}
-      arcAltitudeAutoScale={0.34} arcStroke={0.68} arcDashLength={0.28} arcDashGap={0.11}
+      arcColor={() => ['rgba(137,229,166,.16)', 'rgba(197,255,218,.78)']}
+      arcAltitudeAutoScale={0.2} arcStroke={(item) => Math.min(.3, .11 + (item as MigrationSnapshot['corridors'][number]).confidence * .13)} arcDashLength={0.22} arcDashGap={0.18}
       arcDashAnimateTime={batterySaver ? 0 : 3200}
+      onArcClick={(item) => onSelectMigration?.(item as MigrationSnapshot['corridors'][number])}
       hexBinPointsData={ecologicalCells}
       hexBinPointLat={(item) => (item as { latitude: number }).latitude}
       hexBinPointLng={(item) => (item as { longitude: number }).longitude}
       hexBinPointWeight={(item) => Math.min(8, (item as { observations: number }).observations)}
-      hexBinResolution={3} hexMargin={0.13} hexAltitude={(bin) => Math.min(0.085, 0.012 + Number((bin as { sumWeight?: number }).sumWeight ?? 1) / 170)}
-      hexTopColor={() => migration && life ? 'rgba(145,241,207,.88)' : migration ? 'rgba(164,255,204,.9)' : 'rgba(126,223,212,.86)'} hexSideColor={() => migration ? 'rgba(54,142,102,.34)' : 'rgba(38,126,121,.3)'} hexTransitionDuration={300}
+      hexBinResolution={3} hexMargin={0.24} hexAltitude={(bin) => Math.min(0.045, 0.006 + Number((bin as { sumWeight?: number }).sumWeight ?? 1) / 300)}
+      hexTopColor={(bin) => ((bin as { points?: EcologicalCell[] }).points?.some((cell) => cell.domain === 'migration') ? 'rgba(155,228,161,.58)' : 'rgba(102,190,191,.52)')} hexSideColor={() => 'rgba(31,100,92,.2)'} hexTransitionDuration={300}
+      onHexClick={(bin) => { const cell = (bin as { points?: EcologicalCell[] }).points?.slice().sort((a, b) => b.observations - a.observations)[0]; if (cell) onSelectEcologicalCell?.(cell) }}
       onGlobeReady={() => {
         const globe = ref.current
         const renderer = globe?.renderer()

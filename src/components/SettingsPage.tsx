@@ -2,6 +2,7 @@ import { Activity, BatteryLow, Database, ExternalLink, Gauge, Globe2, KeyRound, 
 import { useEffect, useMemo, useState } from 'react'
 import { providerById } from '../providers/registry'
 import type { ProviderStatus, SignalType } from '../types/signal'
+import type { InformationDensity } from './IntelligenceInspector'
 
 export type PerformanceMode = 'automatic' | 'quality' | 'battery'
 export type MapTheme = 'dark' | 'street'
@@ -16,6 +17,7 @@ interface Props {
   atmosphere: boolean
   labels: boolean
   mapTheme: MapTheme
+  informationDensity: InformationDensity
   onToggle(type: SignalType): void
   onDemoMode(enabled: boolean): Promise<void>
   onFirmsKey(key: string): Promise<void>
@@ -25,6 +27,7 @@ interface Props {
   onAtmosphere(enabled: boolean): void
   onLabels(enabled: boolean): void
   onMapTheme(theme: MapTheme): void
+  onInformationDensity(density: InformationDensity): void
   onErase(): Promise<void>
 }
 
@@ -72,6 +75,14 @@ export default function SettingsPage(props: Props) {
       <div><Activity/><strong>{healthy}/{Object.keys(props.statuses).length}</strong><span>live providers</span></div>
       <div><Database/><strong>{formatBytes(storageUsage).replace(' stored', '')}</strong><span>on this device</span></div>
       <div><ShieldCheck/><strong>LOCAL</strong><span>private by default</span></div>
+    </section>
+
+    <section className="settings-group">
+      <h2>Information</h2>
+      <div className="settings-segment density-segment" role="group" aria-label="Information detail">
+        {(['simple', 'standard', 'expert'] as const).map((density) => <button key={density} className={props.informationDensity === density ? 'active' : ''} onClick={() => props.onInformationDensity(density)}><Type/><span>{density}</span></button>)}
+      </div>
+      <p className="setting-note">Standard explains the world first and keeps methodology one tap away. Expert opens scientific detail by default.</p>
     </section>
 
     <section className="settings-group">

@@ -23,6 +23,17 @@ describe('globe visual stability contract', () => {
     expect(globe).toContain('if(cloud<.055)discard')
   })
 
+  it('never requests an absent city-light texture from the PWA shell', () => {
+    expect(globe).not.toContain('earth-city-lights.jpg')
+    expect(globe).toContain('nightTerrain=dayWorld')
+  })
+
+  it('prioritizes and bounds visible objects as the camera moves outward', () => {
+    expect(globe).toContain('const altitudeLimit = viewpoint.altitude > 1.25 ? 220')
+    expect(globe).toContain('const ringLimit = batterySaver ? 6')
+    expect(globe).toContain('score(b) - score(a)')
+  })
+
   it('makes Migration an additive focus with visible activity pulses', () => {
     expect(app).toContain('enableLayerCollection(layerPresets.migration)')
     expect(app).not.toContain('setRadarEnabled(false)')
@@ -35,6 +46,17 @@ describe('globe visual stability contract', () => {
     expect(app).toContain('migrationFocus.distanceKm.toLocaleString()')
     expect(app).toContain('migrationFocus.direction')
     expect(app).toContain('corridor.commonName ?? corridor.species')
+    expect(globe).toContain('onArcClick=')
+    expect(globe).toContain('onHexClick=')
+    expect(globe).toContain('onSelectLife?.(point)')
+    expect(globe).toContain('arcStroke={(item) => Math.min(.3')
+  })
+
+  it('makes semantic labels and every ecological geometry an intelligence entrance', () => {
+    expect(globe).toContain('onLabelClick=')
+    expect(globe).toContain('visibleMigrationCorridors')
+    expect(app).toContain('<IntelligenceInspector')
+    expect(app).toContain('placeToIntelligence(city)')
   })
 
   it('opens Animals and Life on Earth with licensed biodiversity context', () => {

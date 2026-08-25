@@ -44,6 +44,14 @@ Provider failure is isolated. The application continues with cached data and its
 
 `Signal` remains the evidence record. The deterministic Context Engine converts normalized fields into a progressive explanation: what happened, why it matters, what may happen next, affected area, confidence, awareness, and technical facts. Initial templates cover earthquakes, official weather/cyclone messages, FIRMS thermal observations, and FEMA declarations. Source wording and official instructions are preserved; missing facts are not inferred. The default inspector is human-facing, while provenance and methodology remain under “Show the science.”
 
+## Universal intelligence objects
+
+`NexusIntelligenceObject` is the presentation boundary between evidence and interaction. Signals, species, derived migration corridors, coarse ecological cells, clusters, and places resolve into the same identity/media/context/movement/provenance/watch contract. Renderers emit selection events; they never build provider-specific inspectors. Portrait uses one progressive bottom inspector and landscape uses the same object in a side inspector, preserving the geographic scene.
+
+Media is selection-lazy. The resolver first uses media already attached by an authoritative provider or a license-filtered biodiversity adapter, then may request bounded official detail products such as USGS ShakeMap/DYFI images. It never preloads media for the global feed. Each media object retains kind, creator, license, source, timestamp, freshness, and accessible alternative text.
+
+Meaningful geometry is an entrance, not decoration: globe points, species points, migration corridors, ecological H3 aggregates, and city labels are selectable. MapLibre equivalents use the same callbacks. World scale aggressively limits corridors/cells and uses thinner, lower-opacity geometry; regional zoom progressively increases detail without changing the underlying layer state.
+
 ## Watch pipeline
 
 Watch evaluation is provider-independent: `Provider → Signal → WatchRule → WatchTrigger → WatchDeliveryAdapter`. Current place/radius rules evaluate severity and optional Signal categories, persist triggers in IndexedDB, deduplicate the same Signal for 24 hours, and apply a 15-minute per-rule cooldown. The current delivery adapter is in-app; a future native adapter can add push without modifying providers.
