@@ -88,11 +88,45 @@ function femaContext(signal: Signal): ContextCard {
   }
 }
 
+function volcanoContext(signal: Signal): ContextCard {
+  const name = signal.entities?.find((entity) => entity.type === 'FACILITY')?.name ?? signal.title
+  const alertLevel = text(signal.attributes.alertLevel) ?? 'elevated'
+  const colorCode = text(signal.attributes.colorCode)
+  const synopsis = signal.summary?.replace(/^[A-Z]+\s+[^—-]+[—-]\s*/i, '') ?? signal.summary
+  return {
+    headline: name,
+    plainLanguageSummary: synopsis ?? `${name} has an elevated official volcano status.`,
+    whyItMatters: colorCode === 'RED' || alertLevel === 'WARNING' ? 'The official status indicates hazardous eruptive activity may be occurring or imminent. Ash can also affect aviation.' : 'An elevated alert means activity is above typical background conditions and the responsible observatory is monitoring it closely.',
+    whatHappensNext: 'The responsible volcano observatory may update the alert level as seismic, thermal, gas, and visual observations change.',
+    affectedArea: text(signal.attributes.region), confidence: 'reported',
+    technicalFacts: [{ label: 'Alert level', value: alertLevel }, colorCode ? { label: 'Aviation color', value: colorCode } : undefined, text(signal.attributes.observatory) ? { label: 'Observatory', value: text(signal.attributes.observatory)! } : undefined, text(signal.attributes.nvewsThreat) ? { label: 'NVEWS threat', value: text(signal.attributes.nvewsThreat)! } : undefined].filter(Boolean) as Array<{ label: string; value: string }>,
+    methodology: 'Context is assembled from the current USGS Volcano Hazards Program alert level, aviation color code, observatory synopsis, and region. NEXUS does not infer an eruption.',
+  }
+}
+
+function movingObjectContext(signal: Signal): ContextCard {
+  const isSatellite = signal.type === 'satellite'
+  const altitude = number(signal.attributes.altitudeMeters) ?? number(signal.attributes.altitude)
+  const speed = number(signal.attributes.velocity) ?? number(signal.attributes.speed)
+  const heading = number(signal.attributes.heading) ?? number(signal.attributes.track)
+  return {
+    headline: signal.title,
+    plainLanguageSummary: signal.summary ?? `${isSatellite ? 'An orbital object' : 'An aircraft'} was reported at this position.`,
+    whyItMatters: isSatellite ? 'Orbital positions are propagated from published elements and become less certain as those elements age.' : 'Public aircraft position feeds can be delayed, incomplete, or unavailable; identity and route are shown only when the provider supplies them.',
+    whatHappensNext: isSatellite ? 'The object will continue along its calculated ground track. Local visibility also depends on sunlight, weather, and viewing geometry.' : 'The reported position may update as the aircraft moves through provider coverage.',
+    confidence: isSatellite ? 'estimated' : 'reported',
+    technicalFacts: [altitude === undefined ? undefined : { label: 'Altitude', value: `${Math.round(altitude >= 10_000 ? altitude / 1000 : altitude).toLocaleString()} ${altitude >= 10_000 ? 'km' : 'm'}` }, speed === undefined ? undefined : { label: 'Speed', value: speed.toLocaleString() }, heading === undefined ? undefined : { label: 'Heading', value: `${Math.round(heading)}°` }].filter(Boolean) as Array<{ label: string; value: string }>,
+    methodology: isSatellite ? 'Position context is calculated locally from provider orbital elements where available.' : 'Context uses only fields supplied by the public aviation provider. Missing operator, type, origin, or destination values are not guessed.',
+  }
+}
+
 export function buildSignalContext(signal: Signal): ContextCard {
   if (signal.type === 'earthquake') return earthquakeContext(signal)
   if (signal.type === 'fire') return fireContext(signal)
   if (signal.source.provider === 'openfema') return femaContext(signal)
+  if (signal.source.provider === 'usgs-volcano') return volcanoContext(signal)
   if (signal.type === 'weather') return weatherContext(signal)
+  if (signal.type === 'aircraft' || signal.type === 'satellite') return movingObjectContext(signal)
   return {
     headline: signal.title,
     plainLanguageSummary: signal.summary ?? 'NEXUS received this observation from the named source.',

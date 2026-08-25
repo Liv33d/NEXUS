@@ -11,7 +11,7 @@ export default defineConfig({
     VitePWA({
       disable: singleFilePreview,
       registerType: 'autoUpdate',
-      includeAssets: ['nexus-mark.svg', 'nexus-apple-touch.png', 'nexus-icon-192.png', 'nexus-icon-512.png', 'earth-blue-marble.jpg', 'earth-city-lights.jpg', 'earth-topology.png', 'night-sky.png', 'data/*.json'],
+      includeAssets: ['nexus-mark.svg', 'nexus-apple-touch.png', 'nexus-icon-192.png', 'nexus-icon-512.png', 'earth-blue-marble.jpg', 'earth-topology.png', 'night-sky.png', 'data/*.json'],
       manifest: {
         name: 'NEXUS — See the world connect',
         short_name: 'NEXUS',

@@ -5,7 +5,8 @@
 - Endpoint: official real-time GeoJSON summary feeds.
 - Authentication: none.
 - Freshness: live when the request succeeds; Workbox can supply a clearly labeled cached response when offline.
-- Captured: magnitude, place, depth, event and update time, tsunami flag, alert, significance, review state, felt reports, coordinates, and canonical source URL.
+- Captured: magnitude, place, depth, event and update time, tsunami flag, alert, significance, review state, felt reports, coordinates, canonical source URL, and the official detail-product URL.
+- Selection media: after the user selects an event, NEXUS may load official ComCat product contents such as ShakeMap and Did You Feel It imagery. This request is never multiplied across the global feed and missing products simply leave the media section absent.
 - Safety: maximum feature count, schema validation, bounded request time, safe URL protocol, and coordinate validation.
 
 ## National Weather Service
@@ -88,6 +89,7 @@
 - License gate: only CC0 and CC BY records are processed. CC BY-NC and unknown licenses are excluded so the architecture remains commercially viable.
 - Privacy: observations are aggregated to coarse H3 resolution 3 cells. Exact wildlife coordinates are not rendered.
 - Semantics: animated corridors are changes in per-species observation centroids across two 14-day samples. They are `DERIVED`, not individual tracks, abundance estimates, or migration forecasts. Sampling effort can dominate the pattern.
+- Interaction: corridors and H3 cells are selectable. Human-facing `from` and `toward` labels describe the earlier and recent coarse observation centers near bundled Natural Earth places; they are never presented as biological origin or destination ranges.
 
 ## Astronomy Engine
 

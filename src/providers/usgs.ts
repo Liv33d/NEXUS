@@ -39,7 +39,7 @@ export function normalizeUsgs(payload: unknown, retrievedAt = Date.now()): Signa
       severity: severity(p.mag, p.sig, p.alert),
       confidence: p.status === 'reviewed' ? 0.98 : 0.86,
       entities: p.place ? [{ id: `location-${p.place.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, type: 'LOCATION', name: p.place }] : [],
-      attributes: { depthKm: depth, feltReports: p.felt, cdi: p.cdi, mmi: p.mmi, alert: p.alert, tsunami: Boolean(p.tsunami), significance: p.sig, updatedAt: p.updated, status: p.status },
+      attributes: { depthKm: depth, feltReports: p.felt, cdi: p.cdi, mmi: p.mmi, alert: p.alert, tsunami: Boolean(p.tsunami), significance: p.sig, updatedAt: p.updated, status: p.status, detailUrl: p.detail },
       provenance: [{ label: 'OFFICIAL_SOURCE', description: 'United States Geological Survey real-time earthquake feed.', sourceUrl: p.url }],
       expiresAt: retrievedAt + 30 * 86400000,
     })
