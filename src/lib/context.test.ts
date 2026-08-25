@@ -16,8 +16,15 @@ describe('deterministic context engine', () => {
 
   it('does not convert a thermal anomaly into a confirmed wildfire', () => {
     const context = buildSignalContext(base({ type: 'fire', source: { provider: 'firms', retrievedAt: 1, freshness: 'live' } }))
-    expect(context.headline).toBe('Satellite detected unusual heat')
-    expect(context.plainLanguageSummary).toContain('not automatically a confirmed wildfire')
+    expect(context.headline).toBe('Unclassified thermal anomaly')
+    expect(context.plainLanguageSummary).toContain('does not have enough corroborating evidence')
+    expect(context.methodology).toContain('keeps the source classification unknown')
+  })
+
+  it('distinguishes a reported fire event from a stand-alone heat detection', () => {
+    const context = buildSignalContext(base({ type: 'fire', title: 'Wildfire — Example', source: { provider: 'eonet', retrievedAt: 1, freshness: 'delayed' } }))
+    expect(context.headline).toBe('Reported wildfire activity')
+    expect(context.confidence).toBe('reported')
   })
 
   it('explains FEMA declarations as reported government actions', () => {

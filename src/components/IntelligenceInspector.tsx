@@ -29,15 +29,17 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
 }) {
   const [expanded, setExpanded] = useState(false)
   const [mediaIndex, setMediaIndex] = useState(0)
+  const [failedMedia, setFailedMedia] = useState<Set<string>>(() => new Set())
   const [resolved, setResolved] = useState(object)
   const dragStart = useRef<number | undefined>(undefined)
   useEffect(() => {
-    setExpanded(false); setMediaIndex(0); setResolved(object)
+    setExpanded(false); setMediaIndex(0); setFailedMedia(new Set()); setResolved(object)
     const controller = new AbortController()
     void enrichSelectedIntelligence(object, controller.signal).then((value) => { if (!controller.signal.aborted) setResolved(value) })
     return () => controller.abort()
   }, [object])
-  const media = resolved.media[mediaIndex]
+  const availableMedia = resolved.media.filter((item) => !failedMedia.has(item.id))
+  const media = availableMedia[Math.min(mediaIndex, Math.max(0, availableMedia.length - 1))]
   const domainClass = `intelligence-${resolved.domain}`
   const canObserve = Boolean(resolved.location)
   const mediaLabel = useMemo(() => media ? `${media.title}${media.observedAt ? ` · ${relativeAge(media.observedAt)}` : ''}` : undefined, [media])
@@ -49,10 +51,10 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
         onPointerUp={(event) => { const start = dragStart.current; if (start !== undefined && Math.abs(event.clientY - start) > 32) setExpanded(event.clientY < start); dragStart.current = undefined }}><span/></button>
       <button className="sheet-close" aria-label="Close intelligence" onClick={onClose}><X size={19}/></button>
       {media ? <div className="intelligence-hero">
-        <img src={media.url} alt={media.alt} loading="eager" decoding="async" referrerPolicy="no-referrer"/>
+        <img src={media.url} alt={media.alt} loading="eager" decoding="async" referrerPolicy="no-referrer" onError={() => { setFailedMedia((current) => new Set([...current, media.id])); setMediaIndex(0) }}/>
         <div className="intelligence-hero-shade"/>
         <span>{mediaLabel}</span>
-        {resolved.media.length > 1 && <div className="media-tabs" role="tablist" aria-label="Evidence media">{resolved.media.map((item, index) => <button key={item.id} className={index === mediaIndex ? 'active' : ''} role="tab" aria-selected={index === mediaIndex} onClick={() => setMediaIndex(index)}>{item.kind}</button>)}</div>}
+        {availableMedia.length > 1 && <div className="media-tabs" role="tablist" aria-label="Evidence media">{availableMedia.map((item, index) => <button key={item.id} className={index === mediaIndex ? 'active' : ''} role="tab" aria-selected={index === mediaIndex} onClick={() => setMediaIndex(index)}>{item.kind}</button>)}</div>}
       </div> : <div className="intelligence-hero intelligence-hero-fallback" aria-hidden="true"><span>{resolved.domain.toUpperCase()}</span></div>}
       <div className="intelligence-content">
         <div className="intelligence-eyebrow"><i/>{freshnessLabel(resolved)}</div>

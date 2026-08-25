@@ -63,9 +63,28 @@ function sourceStatus(signal: Signal): NexusIntelligenceObject['status'] {
   return age < 15 * 60_000 ? 'near-real-time' : 'recent'
 }
 
-export function signalToIntelligence(signal: Signal): NexusIntelligenceObject {
+type ThermalClassification = 'unclassified' | 'persistent' | 'possible-fire' | 'possible-volcanic'
+
+export function classifyThermalSignal(signal: Signal, evidence: Signal[]): { classification: ThermalClassification; related: Signal[] } {
+  if (signal.type !== 'fire' || signal.source.provider !== 'firms' || !signal.location) return { classification: 'unclassified', related: [] }
+  const nearby = evidence.filter((candidate) => candidate.id !== signal.id && candidate.location && Math.abs(candidate.timestamp - signal.timestamp) <= 7 * 86_400_000 && distanceKm(signal.location!, { lat: candidate.location!.latitude, lng: candidate.location!.longitude }) <= 60)
+  const officialFire = nearby.find((candidate) => candidate.type === 'fire' && candidate.source.provider !== 'firms' && /fire|wildfire|bushfire/i.test(`${candidate.title} ${candidate.source.dataset ?? ''}`))
+  if (officialFire) return { classification: 'possible-fire', related: [officialFire] }
+  const volcano = nearby.find((candidate) => candidate.source.provider === 'usgs-volcano' || String(candidate.attributes.eventType ?? '').toUpperCase() === 'VO')
+  if (volcano) return { classification: 'possible-volcanic', related: [volcano] }
+  const repeated = nearby.filter((candidate) => candidate.type === 'fire' && candidate.source.provider === 'firms' && Math.abs(candidate.timestamp - signal.timestamp) <= 36 * 3_600_000)
+  const distinctIntervals = new Set([signal, ...repeated].map((item) => Math.floor(item.timestamp / (30 * 60_000))))
+  if (distinctIntervals.size >= 2 && repeated.length >= 2) return { classification: 'persistent', related: repeated.slice(0, 3) }
+  return { classification: 'unclassified', related: [] }
+}
+
+export function signalToIntelligence(signal: Signal, evidence: Signal[] = []): NexusIntelligenceObject {
   const context = buildSignalContext(signal)
-  const title = signal.source.provider === 'usgs-volcano'
+  const thermal = classifyThermalSignal(signal, evidence)
+  const title = thermal.classification === 'possible-fire' ? 'Possible fire activity'
+    : thermal.classification === 'possible-volcanic' ? 'Possible volcanic thermal activity'
+    : thermal.classification === 'persistent' ? 'Persistent thermal activity'
+    : signal.source.provider === 'usgs-volcano'
     ? signal.entities?.find((entity) => entity.type === 'FACILITY')?.name ?? context.headline
     : context.headline
   const subtitle = signal.source.provider === 'usgs-volcano'
@@ -74,8 +93,12 @@ export function signalToIntelligence(signal: Signal): NexusIntelligenceObject {
   return {
     id: signal.id, kind: 'signal', domain: signalDomain(signal), title, subtitle, status: sourceStatus(signal),
     timestamp: signal.timestamp, location: signal.location, geometry: signal.geometry, media: signalMedia(signal),
-    summary: context.plainLanguageSummary, whyItMatters: context.whyItMatters, whatMayHappenNext: context.whatHappensNext,
-    facts: context.technicalFacts, relationships: [], provenance: signal.provenance, methodology: context.methodology,
+    summary: thermal.classification === 'possible-fire' ? 'This satellite heat detection is near a separately reported fire event. The proximity provides context, but it does not prove that both observations represent the same incident.'
+      : thermal.classification === 'possible-volcanic' ? 'This heat detection is near independently reported volcanic activity. The overlap is suggestive, not proof that the volcano caused this pixel.'
+      : thermal.classification === 'persistent' ? 'Multiple thermal detections occurred across separate time intervals in this area. Persistence strengthens the observation while the underlying source remains unclassified.'
+      : context.plainLanguageSummary,
+    whyItMatters: context.whyItMatters, whatMayHappenNext: context.whatHappensNext,
+    facts: context.technicalFacts, relationships: thermal.related.map((related) => { const object = signalToIntelligence(related); return { id: related.id, title: object.title, description: `${related.source.provider.toUpperCase()} · independent nearby evidence`, object } }), provenance: signal.provenance, methodology: thermal.classification === 'unclassified' ? context.methodology : `${context.methodology} NEXUS compared this detection with bounded nearby evidence in place and time; proximity does not prove causation.`,
     confidence: signal.confidence, sourceUrl: signal.source.url, sourceSignal: signal,
     watchLabel: signal.source.provider === 'nhc' ? 'Watch storm' : signal.source.provider === 'usgs-volcano' ? 'Watch volcano' : `Watch ${signal.type.replace('-', ' ')}`,
   }
@@ -87,13 +110,13 @@ export function migrationToIntelligence(corridor: MigrationCorridor, retrievedAt
   const commonName = corridor.commonName ?? corridor.species
   return {
     id: corridor.id, kind: 'migration', domain: 'life', title: commonName, scientificName: corridor.commonName ? corridor.species : undefined,
-    subtitle: `SEASONAL MOVEMENT · ${corridor.direction.toUpperCase()}`, status: 'derived', timestamp: retrievedAt,
+    subtitle: `OBSERVATION PATTERN · ${corridor.direction.toUpperCase()}`, status: 'derived', timestamp: retrievedAt,
     location: { latitude: corridor.endLatitude, longitude: corridor.endLongitude },
     geometry: { type: 'LineString', coordinates: [[corridor.startLongitude, corridor.startLatitude], [corridor.endLongitude, corridor.endLatitude]] },
     media: corridor.media ? [{ id: `${corridor.id}-photo`, kind: 'photo', url: corridor.media.url, title: commonName, alt: `Representative photograph of ${commonName}`, creator: corridor.media.creator, license: corridor.media.license, attribution: `${corridor.media.creator} · ${corridor.media.license}`, sourceUrl: corridor.media.sourceUrl, freshness: 'historical' }] : [],
-    summary: `Recent ${commonName} observations have shifted ${corridor.direction} compared with the previous sampling period, consistent with seasonal movement patterns.`,
+    summary: `Recent ${commonName} observations are centered farther ${corridor.direction} than in the previous sampling period. This may be consistent with seasonal movement, but it is not an individual migration track.`,
     whyItMatters: 'This is a change in where observations were published—not a track of individual birds. It can reveal broad seasonal movement while protecting precise wildlife locations.',
-    whatMayHappenNext: 'Continued movement may appear in later observation windows. Weather and daylight can coincide with migration, but this sample alone cannot establish why movement occurred.',
+    whatMayHappenNext: 'Later observation windows may confirm whether this pattern continues. Typical wintering and breeding ranges require separate species-range evidence and are not inferred from these points.',
     movement: { from: start, toward: end, direction: corridor.direction, distanceKm: corridor.distanceKm, interpretation: 'Derived comparison of coarse observation centers over two consecutive 14-day windows.' },
     facts: [{ label: 'Recent observations', value: corridor.recentObservations.toLocaleString() }, { label: 'Previous observations', value: corridor.priorObservations.toLocaleString() }, { label: 'Derived center shift', value: `${corridor.distanceKm.toLocaleString()} km ${corridor.direction}` }],
     relationships: [], provenance: [{ label: 'OPEN_DATA', description: 'Permissively licensed GBIF occurrence records.' }, { label: 'DERIVED_METRIC', description: 'NEXUS compares coarse observation centers; it does not infer individual routes.' }],

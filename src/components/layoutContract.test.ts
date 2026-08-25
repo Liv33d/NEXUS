@@ -13,7 +13,7 @@ describe('mobile interaction layout contract', () => {
   })
 
   it('exposes coherent Earth domains without presenting unavailable feeds as live', () => {
-    for (const label of ['Solar System', 'Bird Migration', 'Maritime', 'Flight Activity', 'Animals & Life', 'Orbit']) {
+    for (const label of ['Bird Migration', 'Maritime', 'Flight Activity', 'Animals & Life', 'Orbit']) {
       expect(app).toContain(label)
     }
     expect(app).toContain('Ocean hazards · no live vessel tracking')
@@ -21,13 +21,11 @@ describe('mobile interaction layout contract', () => {
     expect(styles).toContain('.domain-lens-grid')
   })
 
-  it('enters the Solar System by continuing outward from Earth', () => {
-    expect(app).toContain('onRequestSolar={enterSolarSystem}')
-    expect(app).not.toContain('solar-launch')
-    expect(app).toContain('<strong>Solar System</strong>')
-    expect(app).toContain('disabled={!webGLAvailable}')
-    expect(app).toContain("if (!webGLAvailable) return")
-    expect(styles).toContain('.space-transition-cue')
+  it('reserves Earth zoom exclusively for Earth navigation', () => {
+    expect(app).not.toContain('onRequestSolar')
+    expect(app).not.toContain('enterSolarSystem')
+    expect(app).not.toContain('<strong>Solar System</strong>')
+    expect(app).toContain("store.view === 'earth' && earthContent")
   })
 
   it('uses an intentional landscape inspector instead of stacking portrait sheets', () => {

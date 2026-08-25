@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FeatureCollection, LineString, Point } from 'geojson'
-import { Map as MapLibreMap, setWorkerUrl, type GeoJSONSource } from 'maplibre-gl'
+import { Map as MapLibreMap, setWorkerUrl, type GeoJSONSource, type RasterTileSource } from 'maplibre-gl'
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { environmentalLayerStamp, noaaGeoColorTileTemplate, noaaRadarTileTemplate } from '../lib/mapLayers'
@@ -23,6 +23,7 @@ interface Props {
   radarEnabled?: boolean
   satelliteEnabled?: boolean
   mapTheme?: 'dark' | 'street'
+  performanceMode?: 'automatic' | 'quality' | 'battery'
   onFallback(): void
   initialView?: GeographicView
   onViewChange?(view: GeographicView): void
@@ -80,7 +81,7 @@ function removeWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satell
   if (map.getSource(id)) map.removeSource(id)
 }
 
-export default function ConnectedMapView({ signals, selected, onSelect, onSelectSignalCluster, onSelectMigration, onSelectLife, onSelectEcologicalCell, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestGlobe, migration, life }: Props) {
+export default function ConnectedMapView({ signals, selected, onSelect, onSelectSignalCluster, onSelectMigration, onSelectLife, onSelectEcologicalCell, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', performanceMode = 'automatic', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, onRequestGlobe, migration, life }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const signalsRef = useRef(signals)
@@ -122,6 +123,7 @@ export default function ConnectedMapView({ signals, selected, onSelect, onSelect
       container: hostRef.current,
       style: `https://tiles.openfreemap.org/styles/${mapTheme === 'street' ? 'liberty' : 'dark'}`,
       center: [initial.longitude, initial.latitude], zoom: altitudeToMapZoom(initial.altitude), minZoom: 0.75, maxZoom: 16,
+      pixelRatio: Math.min(window.devicePixelRatio || 1, performanceMode === 'quality' ? 2 : performanceMode === 'battery' ? 1 : 1.5),
       pitchWithRotate: false, dragRotate: false, touchPitch: false,
       attributionControl: {},
     })
@@ -144,6 +146,11 @@ export default function ConnectedMapView({ signals, selected, onSelect, onSelect
       map.addLayer({ id: 'nexus-signal-halo', type: 'circle', source: 'nexus-signals', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'circle-radius': ['interpolate', ['linear'], ['get', 'severity'], 0, 7, 100, 17], 'circle-opacity': .14 } })
       map.addLayer({ id: 'nexus-signal-points', type: 'circle', source: 'nexus-signals', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 3.5, 8, 7], 'circle-stroke-width': 1.25, 'circle-stroke-color': '#ecfffc' } })
       map.on('click', 'nexus-signal-points', (event) => {
+        const id = event.features?.[0]?.properties?.id
+        const signal = signalsRef.current.find((item) => item.id === id)
+        if (signal) onSelectRef.current(signal)
+      })
+      for (const layer of ['nexus-area-fill', 'nexus-track-lines']) map.on('click', layer, (event) => {
         const id = event.features?.[0]?.properties?.id
         const signal = signalsRef.current.find((item) => item.id === id)
         if (signal) onSelectRef.current(signal)
@@ -182,7 +189,7 @@ export default function ConnectedMapView({ signals, selected, onSelect, onSelect
           map.easeTo({ center, zoom: Math.min(zoom, map.getZoom() + 2), duration: 700 })
         })
       })
-      for (const layer of ['nexus-signal-points', 'nexus-clusters', 'nexus-migration', 'nexus-life-density']) {
+      for (const layer of ['nexus-signal-points', 'nexus-clusters', 'nexus-migration', 'nexus-life-density', 'nexus-area-fill', 'nexus-track-lines']) {
         map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = '' })
       }
@@ -224,7 +231,7 @@ export default function ConnectedMapView({ signals, selected, onSelect, onSelect
       try { map.remove() } catch { /* Detached renderer is already unusable. */ }
       mapRef.current = null
     }
-  }, [mapTheme, onFallback])
+  }, [mapTheme, onFallback, performanceMode])
 
   useEffect(() => {
     const map = mapRef.current
@@ -249,10 +256,14 @@ export default function ConnectedMapView({ signals, selected, onSelect, onSelect
   useEffect(() => {
     const map = mapRef.current
     if (!ready || !map) return
-    removeWeatherSource(map, 'nexus-radar')
-    removeWeatherSource(map, 'nexus-satellite')
-    if (satelliteEnabled) addWeatherSource(map, 'nexus-satellite', [noaaGeoColorTileTemplate(layerReference)], .4, 'Imagery: NOAA/NESDIS GeoColor')
-    if (radarEnabled) addWeatherSource(map, 'nexus-radar', [noaaRadarTileTemplate(layerReference)], .76, 'Radar: NOAA/NWS MRMS')
+    const sync = (id: 'nexus-radar' | 'nexus-satellite', enabled: boolean, tiles: string[], opacity: number, attribution: string) => {
+      if (!enabled) { removeWeatherSource(map, id); return }
+      const source = map.getSource(id) as RasterTileSource | undefined
+      if (source) source.setTiles(tiles)
+      else addWeatherSource(map, id, tiles, opacity, attribution)
+    }
+    sync('nexus-satellite', satelliteEnabled, [noaaGeoColorTileTemplate(layerReference)], .4, 'Imagery: NOAA/NESDIS GeoColor')
+    sync('nexus-radar', radarEnabled, [noaaRadarTileTemplate(layerReference)], .76, 'Radar: NOAA/NWS MRMS')
   }, [layerReference, radarEnabled, ready, satelliteEnabled])
 
   useEffect(() => {

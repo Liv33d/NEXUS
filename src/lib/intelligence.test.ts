@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { discoveryToIntelligence, ecologicalClusterToIntelligence, lifeTaxonToIntelligence, migrationToIntelligence, observerTaxonToIntelligence, orbitalPassToIntelligence, signalToIntelligence } from './intelligence'
+import { classifyThermalSignal, discoveryToIntelligence, ecologicalClusterToIntelligence, lifeTaxonToIntelligence, migrationToIntelligence, observerTaxonToIntelligence, orbitalPassToIntelligence, signalToIntelligence } from './intelligence'
+import type { Signal } from '../types/signal'
 import { createDemoSignals } from '../data/demo'
 
 describe('universal intelligence objects', () => {
@@ -50,5 +51,16 @@ describe('universal intelligence objects', () => {
     expect(life.title).toBe('American Redstart')
     expect(pass.kind).toBe('orbital-pass')
     expect(pass.summary).toContain('rise above 18°')
+  })
+
+  it('classifies thermal evidence conservatively and exposes corroboration', () => {
+    const thermal: Signal = { id: 'firms-1', source: { provider: 'firms', retrievedAt: 10, freshness: 'delayed' }, type: 'fire', title: 'Thermal detection', timestamp: 10, location: { latitude: 34, longitude: -118 }, attributes: {}, provenance: [] }
+    const reported: Signal = { ...thermal, id: 'eonet-1', source: { provider: 'eonet', retrievedAt: 10, freshness: 'delayed' }, title: 'Wildfire — Example' }
+    expect(classifyThermalSignal(thermal, [thermal]).classification).toBe('unclassified')
+    expect(classifyThermalSignal(thermal, [thermal, reported]).classification).toBe('possible-fire')
+    const object = signalToIntelligence(thermal, [thermal, reported])
+    expect(object.title).toBe('Possible fire activity')
+    expect(object.relationships[0]?.title).toContain('Reported wildfire activity')
+    expect(object.methodology).toContain('proximity does not prove causation')
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Signal } from '../types/signal'
-import { allLayerIds, layerPresets, signalLayerId, visibleWithLayers } from './layers'
+import { allLayerIds, layerPresets, livingEarthLayerIds, signalLayerId, visibleWithLayers } from './layers'
 
 const signal = (provider: string, type: Signal['type']): Signal => ({
   id: `${provider}-${type}`,
@@ -13,9 +13,11 @@ const signal = (provider: string, type: Signal['type']): Signal => ({
 })
 
 describe('composable Earth layers', () => {
-  it('defines unique layer identifiers and an everything preset', () => {
+  it('separates a calm Living Earth preset from the power-user everything collection', () => {
     expect(new Set(allLayerIds).size).toBe(allLayerIds.length)
-    expect(layerPresets.world).toEqual(allLayerIds)
+    expect(layerPresets.world).toEqual(livingEarthLayerIds)
+    expect(layerPresets.world.length).toBeLessThan(allLayerIds.length)
+    expect(allLayerIds).toEqual(expect.arrayContaining(layerPresets.world))
   })
 
   it('adds contextual atmosphere to migration without making it exclusive', () => {
