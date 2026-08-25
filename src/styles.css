@@ -358,6 +358,28 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .technical-details summary,.technical-facts span,.methodology-copy,.provenance,.media-license,.source-link,.location-row { font-size:12px }
 .app-shell:has(.intelligence-inspector) .bottom-nav { opacity:0;pointer-events:none;transform:translate(-50%,16px) }
 
+/* V2 consumer type floor: metadata may be quiet, never microscopic. */
+.command-tabs button,.control-note,.lens-summary,.lens-grid button span small,
+.domain-heading span,.domain-heading small,.domain-launcher>p,
+.domain-lens-grid strong,.domain-lens-grid small,.domain-lens-grid button>b,
+.environment-grid .environment-lens span strong,.environment-grid .environment-lens span small,.environment-grid .environment-lens>b,
+.ambient-toggle span strong,.ambient-toggle span small,.ambient-toggle>b,
+.active-domain-note strong,.active-domain-note small,.active-domain-note>p,
+.taxon-strip button strong,.taxon-strip button small,.media-attribution,
+.domain-science summary,.domain-science dt,.domain-science dd,
+.advanced-layers>summary,.advanced-layers>summary b,.show-everything small,.layer-category-group>h3,
+.media-tabs button { font-size:11px }
+.domain-lens-grid small,.environment-grid .environment-lens span small,.active-domain-note>p,.domain-launcher>p { line-height:1.4 }
+.domain-lens-grid button,.environment-grid .environment-lens,.ambient-toggle { min-height:72px }
+.media-tabs button { min-height:38px;padding:0 11px }
+
+/* Peek is an invitation, not a dead-end tooltip. */
+.nexus-hero-card.detent-peek { max-height:190px }
+.nexus-hero-card.detent-peek .intelligence-content { min-height:178px;padding-bottom:46px }
+.nexus-hero-card.detent-peek .intelligence-actions { position:absolute;z-index:3;right:16px;bottom:11px;display:block }
+.nexus-hero-card.detent-peek .intelligence-actions>button { display:none }
+.nexus-hero-card.detent-peek .intelligence-actions>.details-action { min-height:44px;padding:0 14px;display:flex;font-size:12px;border-color:rgba(255,255,255,.14);background:rgba(7,17,18,.88) }
+
 @media (orientation:landscape) and (max-height:620px) {
   .intelligence-inspector,.intelligence-inspector.detent-peek,.intelligence-inspector.detent-story,.intelligence-inspector.detent-full { top:calc(52px + env(safe-area-inset-top));right:max(8px,env(safe-area-inset-right));bottom:8px;left:auto;width:min(380px,38vw);max-height:none;overflow-y:auto;border-radius:24px }
   .intelligence-inspector .inspector-drag-handle { display:none }
@@ -367,4 +389,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
   .nexus-hero-card.detent-peek .hero-key-facts,.nexus-hero-card.detent-peek .intelligence-actions { display:grid }
   .nexus-hero-card.detent-peek .intelligence-expanded { display:none }
   .intelligence-content h2 { font-size:26px }.intelligence-summary { font-size:13px }
+  .intelligence-inspector.detent-peek .intelligence-expanded,.intelligence-inspector.detent-story .intelligence-expanded,.intelligence-inspector.detent-full .intelligence-expanded { display:block }
+  .intelligence-inspector.detent-peek .intelligence-actions { position:static;display:grid }
+  .intelligence-inspector.detent-peek .intelligence-actions>button { display:flex }
+  .intelligence-inspector .details-action { display:none!important }
+  .intelligence-inspector.detent-story .technical-details,.intelligence-inspector.detent-story .related-intelligence { display:block }
+  .intelligence-inspector.detent-story .source-link { display:flex }
 }

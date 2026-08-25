@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FeatureCollection, LineString, Point } from 'geojson'
-import { Map as MapLibreMap, setWorkerUrl, type GeoJSONSource, type RasterTileSource } from 'maplibre-gl'
+import { Map as MapLibreMap, setWorkerUrl, type GeoJSONSource } from 'maplibre-gl'
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { environmentalLayerStamp, noaaGeoColorTileTemplate, noaaRadarTileTemplate } from '../lib/mapLayers'
+import { environmentalFrameReference, environmentalLayers, nasaTrueColorTilesForDate, noaaGeoColorTileTemplate, noaaRadarTileTemplate } from '../lib/mapLayers'
 import { signalAreasGeoJSON } from '../lib/geospatial'
 import type { Signal } from '../types/signal'
 import { altitudeToMapZoom, clampGeographicView, DEFAULT_GEOGRAPHIC_VIEW, mapZoomToAltitude, type GeographicView } from '../lib/geography'
@@ -31,6 +31,8 @@ interface Props {
   onRequestGlobe?(): void
   migration?: MigrationSnapshot
   life?: LifeGlobeSnapshot
+  active?: boolean
+  environmentalTime?: number
 }
 
 type SignalProperties = { id: string; title: string; type: Signal['type']; severity: number }
@@ -71,18 +73,113 @@ function lifeDensity(migration?: MigrationSnapshot, life?: LifeGlobeSnapshot): F
   ].sort((a, b) => b.properties.observations - a.properties.observations).slice(0, 500) }
 }
 
-function addWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satellite', tiles: string[], opacity: number, attribution?: string) {
-  if (map.getSource(id)) return
-  map.addSource(id, { type: 'raster', tiles, tileSize: 256, attribution: attribution ?? (id === 'nexus-radar' ? 'Weather: NOAA/NWS' : 'Satellite: NOAA/NESDIS') })
-  map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': opacity, 'raster-fade-duration': 300 } }, map.getLayer('waterway-label') ? 'waterway-label' : undefined)
+type WeatherKind = 'radar' | 'satellite'
+type WeatherSlot = 'a' | 'b'
+interface WeatherLayerState { active?: WeatherSlot; url?: string; cleanup?: () => void }
+
+function firstSymbolLayer(map: MapLibreMap) {
+  return map.getStyle().layers?.find((layer) => layer.type === 'symbol')?.id
 }
 
-function removeWeatherSource(map: MapLibreMap, id: 'nexus-radar' | 'nexus-satellite') {
+function weatherId(kind: WeatherKind, slot: WeatherSlot) { return `nexus-${kind}-${slot}` }
+
+function orderWeatherLayers(map: MapLibreMap) {
+  const anchor = firstSymbolLayer(map)
+  if (!anchor) return
+  for (const kind of ['satellite', 'radar'] as const) {
+    for (const slot of ['a', 'b'] as const) {
+      const id = weatherId(kind, slot)
+      if (map.getLayer(id)) map.moveLayer(id, anchor)
+    }
+  }
+}
+
+function removeLayerAndSource(map: MapLibreMap, id: string) {
   if (map.getLayer(id)) map.removeLayer(id)
   if (map.getSource(id)) map.removeSource(id)
 }
 
-export default function ConnectedMapView({ signals, selected, focusLocation, onSelect, onSelectSignalCluster, onSelectMigration, onSelectLife, onSelectEcologicalCell, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', performanceMode = 'automatic', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, migration, life }: Props) {
+function clearWeatherLayer(map: MapLibreMap, kind: WeatherKind, state: WeatherLayerState) {
+  state.cleanup?.()
+  for (const slot of ['a', 'b'] as const) removeLayerAndSource(map, weatherId(kind, slot))
+  state.active = undefined
+  state.url = undefined
+  state.cleanup = undefined
+}
+
+function stageWeatherLayer(map: MapLibreMap, kind: WeatherKind, url: string, opacity: number, attribution: string, state: WeatherLayerState, onReady: () => void, onFailure: () => void, maxzoom?: number) {
+  if (state.url === url && state.active) return
+  state.cleanup?.()
+  const next: WeatherSlot = state.active === 'a' ? 'b' : 'a'
+  const nextId = weatherId(kind, next)
+  removeLayerAndSource(map, nextId)
+  map.addSource(nextId, { type: 'raster', tiles: [url], tileSize: 256, attribution, ...(maxzoom === undefined ? {} : { maxzoom }) })
+  map.addLayer({ id: nextId, type: 'raster', source: nextId, paint: { 'raster-opacity': state.active ? 0 : opacity, 'raster-fade-duration': 350, 'raster-resampling': 'linear' } }, firstSymbolLayer(map))
+  orderWeatherLayers(map)
+  let settled = false
+  const finish = () => {
+    if (settled || !map.getSource(nextId)) return
+    settled = true
+    const previousId = state.active ? weatherId(kind, state.active) : undefined
+    map.setPaintProperty(nextId, 'raster-opacity', opacity)
+    if (previousId && map.getLayer(previousId)) map.setPaintProperty(previousId, 'raster-opacity', 0)
+    const removal = window.setTimeout(() => { if (previousId) removeLayerAndSource(map, previousId) }, 480)
+    state.active = next
+    state.url = url
+    state.cleanup = () => window.clearTimeout(removal)
+    onReady()
+    map.off('sourcedata', loaded)
+    window.clearTimeout(timeout)
+  }
+  const loaded = (event: { sourceId?: string; isSourceLoaded?: boolean }) => {
+    if (event.sourceId === nextId && (event.isSourceLoaded || map.isSourceLoaded(nextId))) finish()
+  }
+  map.on('sourcedata', loaded)
+  const timeout = window.setTimeout(() => {
+    if (settled) return
+    settled = true
+    map.off('sourcedata', loaded)
+    removeLayerAndSource(map, nextId)
+    state.cleanup = undefined
+    onFailure()
+  }, 9_000)
+  state.cleanup = () => { map.off('sourcedata', loaded); window.clearTimeout(timeout) }
+}
+
+function applyNexusEarthStyle(map: MapLibreMap) {
+  const safePaint = (id: string, property: string, value: unknown) => {
+    if (!map.getLayer(id)) return
+    try { map.setPaintProperty(id, property as never, value as never) } catch { /* Remote styles can rename or change layer types. */ }
+  }
+  if (!map.getSource('nexus-natural-relief')) map.addSource('nexus-natural-relief', {
+    type: 'raster', tiles: ['https://tiles.openfreemap.org/natural_earth/ne2sr/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 6,
+    attribution: 'Natural Earth',
+  })
+  if (!map.getLayer('nexus-natural-relief')) map.addLayer({
+    id: 'nexus-natural-relief', type: 'raster', source: 'nexus-natural-relief', maxzoom: 7,
+    paint: {
+      'raster-opacity': ['interpolate', ['linear'], ['zoom'], 0, .88, 3, .7, 6, .08, 7, 0],
+      'raster-saturation': -.12, 'raster-contrast': .08, 'raster-brightness-min': .08, 'raster-brightness-max': .86,
+      'raster-resampling': 'linear', 'raster-fade-duration': 250,
+    },
+  }, map.getLayer('water') ? 'water' : firstSymbolLayer(map))
+  safePaint('background', 'background-color', '#010507')
+  safePaint('water', 'fill-color', '#092633')
+  safePaint('water', 'fill-opacity', .78)
+  for (const layer of map.getStyle().layers ?? []) {
+    if (layer.type === 'line' && /boundary|admin/i.test(layer.id)) {
+      safePaint(layer.id, 'line-color', 'rgba(191, 204, 201, .34)')
+      safePaint(layer.id, 'line-opacity', ['interpolate', ['linear'], ['zoom'], 0, .22, 5, .48])
+    }
+    if (layer.type === 'symbol' && /place|country|city|town/i.test(layer.id)) {
+      safePaint(layer.id, 'text-color', '#c6cfcc')
+      safePaint(layer.id, 'text-halo-color', 'rgba(2, 8, 10, .9)')
+      safePaint(layer.id, 'text-halo-width', 1.4)
+    }
+  }
+}
+
+export default function ConnectedMapView({ signals, selected, focusLocation, onSelect, onSelectSignalCluster, onSelectMigration, onSelectLife, onSelectEcologicalCell, radarEnabled = false, satelliteEnabled = false, mapTheme = 'dark', performanceMode = 'automatic', onFallback, initialView = DEFAULT_GEOGRAPHIC_VIEW, onViewChange, migration, life, active = true, environmentalTime }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const signalsRef = useRef(signals)
@@ -96,9 +193,12 @@ export default function ConnectedMapView({ signals, selected, focusLocation, onS
   const onViewChangeRef = useRef(onViewChange)
   const initialViewRef = useRef(initialView)
   const previousSelectedId = useRef<string | undefined>(undefined)
+  const weatherLayers = useRef<Record<WeatherKind, WeatherLayerState>>({ radar: {}, satellite: {} })
   const [ready, setReady] = useState(false)
   const [contextLost, setContextLost] = useState(false)
   const [layerReference, setLayerReference] = useState(Date.now)
+  const [loadedAt, setLoadedAt] = useState<Partial<Record<WeatherKind, number>>>({})
+  const [weatherStatus, setWeatherStatus] = useState<Partial<Record<WeatherKind, 'loading' | 'ready' | 'delayed' | 'unavailable'>>>({})
   const collection = useMemo(() => signalCollection(signals), [signals])
   const areas = useMemo(() => signalAreasGeoJSON(signals), [signals])
   const tracks = useMemo(() => forecastTracks(signals), [signals])
@@ -106,17 +206,19 @@ export default function ConnectedMapView({ signals, selected, focusLocation, onS
   const ecologicalDensity = useMemo(() => lifeDensity(migration, life), [life, migration])
 
   useEffect(() => {
-    if (!radarEnabled && !satelliteEnabled) return
+    if ((!radarEnabled && !satelliteEnabled) || !active) return
     const refresh = () => { if (document.visibilityState === 'visible') setLayerReference(Date.now()) }
     refresh()
-    const timer = window.setInterval(refresh, 5 * 60_000)
-    return () => window.clearInterval(timer)
-  }, [radarEnabled, satelliteEnabled])
+    const timer = window.setInterval(refresh, 60_000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh) }
+  }, [active, radarEnabled, satelliteEnabled])
 
   useEffect(() => { signalsRef.current = signals; onSelectRef.current = onSelect; onSelectSignalClusterRef.current = onSelectSignalCluster; onSelectMigrationRef.current = onSelectMigration; onSelectLifeRef.current = onSelectLife; onSelectEcologicalCellRef.current = onSelectEcologicalCell; migrationRef.current = migration; lifeRef.current = life; onViewChangeRef.current = onViewChange }, [life, migration, onSelect, onSelectEcologicalCell, onSelectLife, onSelectMigration, onSelectSignalCluster, onViewChange, signals])
 
   useEffect(() => {
     if (!hostRef.current) return
+    const weatherLayerStates = weatherLayers.current
     let settled = false
     const timeout = window.setTimeout(() => { if (!settled) onFallback() }, 14_000)
     const initial = clampGeographicView(initialViewRef.current)
@@ -134,13 +236,14 @@ export default function ConnectedMapView({ signals, selected, focusLocation, onS
       settled = true
       window.clearTimeout(timeout)
       map.setSky({
-        'sky-color': '#02080d',
-        'horizon-color': '#1b4651',
-        'fog-color': '#07151c',
-        'sky-horizon-blend': .42,
-        'horizon-fog-blend': .72,
-        'fog-ground-blend': .58,
+        'sky-color': '#010305',
+        'horizon-color': '#7f999d',
+        'fog-color': '#132229',
+        'sky-horizon-blend': .18,
+        'horizon-fog-blend': .48,
+        'fog-ground-blend': .34,
       })
+      applyNexusEarthStyle(map)
       map.addSource('nexus-signals', { type: 'geojson', data: signalCollection(signalsRef.current), cluster: true, clusterMaxZoom: 7, clusterRadius: 42 })
       map.addSource('nexus-areas', { type: 'geojson', data: signalAreasGeoJSON(signalsRef.current) })
       map.addLayer({ id: 'nexus-area-fill', type: 'fill', source: 'nexus-areas', paint: { 'fill-color': '#74b7ff', 'fill-opacity': .13 } })
@@ -236,6 +339,8 @@ export default function ConnectedMapView({ signals, selected, focusLocation, onS
       window.visualViewport?.removeEventListener('resize', resize)
       canvas.removeEventListener('webglcontextlost', contextLostHandler)
       canvas.removeEventListener('webglcontextrestored', contextRestoredHandler)
+      for (const state of Object.values(weatherLayerStates)) state.cleanup?.()
+      for (const state of Object.values(weatherLayerStates)) { state.active = undefined; state.url = undefined; state.cleanup = undefined }
       // MapLibre can throw synchronously when a route change tears it down
       // before its remote style has finished loading. Navigation must never
       // take the whole application into Safe Mode because a basemap is slow.
@@ -246,36 +351,47 @@ export default function ConnectedMapView({ signals, selected, focusLocation, onS
 
   useEffect(() => {
     const map = mapRef.current
-    if (!ready || !map?.getSource('nexus-signals')) return
+    if (!ready || !active || !map?.getSource('nexus-signals')) return
     ;(map.getSource('nexus-signals') as GeoJSONSource).setData(collection)
-  }, [collection, ready])
+  }, [active, collection, ready])
 
   useEffect(() => {
     const map = mapRef.current
-    if (!ready || !map) return
+    if (!ready || !active || !map) return
     ;(map.getSource('nexus-areas') as GeoJSONSource | undefined)?.setData(areas)
     ;(map.getSource('nexus-tracks') as GeoJSONSource | undefined)?.setData(tracks)
-  }, [areas, ready, tracks])
+  }, [active, areas, ready, tracks])
 
   useEffect(() => {
     const map = mapRef.current
-    if (!ready || !map) return
+    if (!ready || !active || !map) return
     ;(map.getSource('nexus-life-density') as GeoJSONSource | undefined)?.setData(ecologicalDensity)
     ;(map.getSource('nexus-migration') as GeoJSONSource | undefined)?.setData(migrationLines)
-  }, [ecologicalDensity, migrationLines, ready])
+  }, [active, ecologicalDensity, migrationLines, ready])
 
   useEffect(() => {
     const map = mapRef.current
     if (!ready || !map) return
-    const sync = (id: 'nexus-radar' | 'nexus-satellite', enabled: boolean, tiles: string[], opacity: number, attribution: string) => {
-      if (!enabled) { removeWeatherSource(map, id); return }
-      const source = map.getSource(id) as RasterTileSource | undefined
-      if (source) source.setTiles(tiles)
-      else addWeatherSource(map, id, tiles, opacity, attribution)
+    const historical = environmentalTime !== undefined && environmentalTime < Date.now() - 15 * 60_000
+    const sync = (kind: WeatherKind, enabled: boolean, url: string, opacity: number, attribution: string) => {
+      const state = weatherLayers.current[kind]
+      if (!enabled) { clearWeatherLayer(map, kind, state); setWeatherStatus((current) => ({ ...current, [kind]: undefined })); return }
+      if (!active) return
+      if (state.url === url && state.active) return
+      setWeatherStatus((current) => ({ ...current, [kind]: 'loading' }))
+      const providerChanged = Boolean(state.url && new URL(state.url.replace('{bbox-epsg-3857}', '0,0,1,1').replace('{z}', '0').replace('{x}', '0').replace('{y}', '0')).hostname !== new URL(url.replace('{bbox-epsg-3857}', '0,0,1,1').replace('{z}', '0').replace('{x}', '0').replace('{y}', '0')).hostname)
+      stageWeatherLayer(map, kind, url, opacity, attribution, state,
+        () => { setLoadedAt((current) => ({ ...current, [kind]: Date.now() })); setWeatherStatus((current) => ({ ...current, [kind]: 'ready' })) },
+        () => {
+          if (providerChanged) clearWeatherLayer(map, kind, state)
+          setWeatherStatus((current) => ({ ...current, [kind]: !providerChanged && loadedAt[kind] ? 'delayed' : 'unavailable' }))
+        },
+        kind === 'satellite' && historical ? 9 : undefined)
     }
-    sync('nexus-satellite', satelliteEnabled, [noaaGeoColorTileTemplate(layerReference)], .4, 'Imagery: NOAA/NESDIS GeoColor')
-    sync('nexus-radar', radarEnabled, [noaaRadarTileTemplate(layerReference)], .76, 'Radar: NOAA/NWS MRMS')
-  }, [layerReference, radarEnabled, ready, satelliteEnabled])
+    const satelliteUrl = historical ? nasaTrueColorTilesForDate(environmentalTime) : noaaGeoColorTileTemplate(environmentalFrameReference('satellite', layerReference))
+    sync('satellite', satelliteEnabled, satelliteUrl, historical ? .64 : .4, historical ? 'Imagery: NASA EOSDIS GIBS / MODIS Terra' : environmentalLayers.satellite.attribution)
+    sync('radar', radarEnabled && !historical, noaaRadarTileTemplate(environmentalFrameReference('radar', layerReference)), .76, environmentalLayers.radar.attribution)
+  }, [active, environmentalTime, layerReference, loadedAt, radarEnabled, ready, satelliteEnabled])
 
   useEffect(() => {
     const location = focusLocation ?? selected?.location
@@ -292,6 +408,12 @@ export default function ConnectedMapView({ signals, selected, focusLocation, onS
     previousSelectedId.current = selected?.id
   }, [ready, selected?.id])
 
-  const radarStamp = environmentalLayerStamp('radar', layerReference)
-  return <div className="map-stage earth-scene-v2"><div ref={hostRef} className="maplibre-host" aria-label={`Interactive Earth showing ${collection.features.length} prioritized signals`}/>{(!ready || contextLost) && <div className="map-loading"><span/><strong>{contextLost ? 'Restoring Earth' : 'Awakening Earth'}</strong><small>{contextLost ? 'Graphics context was interrupted' : 'Loading geographic detail'}</small></div>}<div className="connected-map-status"><span>{radarEnabled ? 'RADAR · U.S. COVERAGE' : satelliteEnabled ? 'CLOUDS · REGIONAL COVERAGE' : 'LIVING EARTH'}</span><small>{radarEnabled ? `Retrieved ${new Date(radarStamp.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : satelliteEnabled ? 'Recent GOES imagery where available' : 'Rotate · pinch · tap anything'}</small></div></div>
+  const historical = environmentalTime !== undefined && environmentalTime < Date.now() - 15 * 60_000
+  const activeKind: WeatherKind | undefined = radarEnabled && !historical ? 'radar' : satelliteEnabled ? 'satellite' : undefined
+  const successfulLoad = activeKind ? loadedAt[activeKind] : undefined
+  const activeStatus = activeKind ? weatherStatus[activeKind] : undefined
+  const currentLabel = radarEnabled && satelliteEnabled ? '2 WEATHER LAYERS' : radarEnabled ? 'NOAA RADAR · COVERAGE VARIES' : 'SATELLITE · GOES DOMAINS'
+  const currentStatusCopy = activeStatus === 'unavailable' ? 'Imagery temporarily unavailable' : activeStatus === 'delayed' ? 'Showing the last successfully loaded image' : successfulLoad ? `Latest available · refreshed ${new Date(successfulLoad).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Acquiring latest imagery'
+  const historicalStatusCopy = !satelliteEnabled ? 'Return to Now to view current radar' : activeStatus === 'unavailable' ? 'Daily satellite imagery unavailable' : activeStatus === 'delayed' ? 'Showing the last successfully loaded daily image' : successfulLoad ? `${new Date(environmentalTime!).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}${radarEnabled ? ' · radar history unavailable' : ''}` : 'Loading daily satellite context'
+  return <div className="map-stage earth-scene-v2"><div ref={hostRef} className="maplibre-host" aria-label={`Interactive Earth showing ${collection.features.length} prioritized signals`}/>{(!ready || contextLost) && <div className="map-loading"><span/><strong>{contextLost ? 'Restoring Earth' : 'Awakening Earth'}</strong><small>{contextLost ? 'Graphics context was interrupted' : 'Loading geographic detail'}</small></div>}{(radarEnabled || satelliteEnabled) && <div className="connected-map-status"><span>{historical ? satelliteEnabled ? 'DAILY SATELLITE CONTEXT' : 'RADAR HISTORY UNAVAILABLE' : currentLabel}</span><small>{historical ? historicalStatusCopy : currentStatusCopy}</small></div>}</div>
 }

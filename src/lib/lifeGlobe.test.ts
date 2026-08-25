@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildLifeGlobeSnapshot } from './lifeGlobe'
 
-const licensed = 'http://creativecommons.org/licenses/by/4.0/legalcode'
+const licensed = 'http://creativecommons.org/publicdomain/zero/1.0/'
 
 describe('global LIFE context', () => {
   it('summarizes named, licensed taxa without exposing exact coordinates', () => {
@@ -19,6 +19,7 @@ describe('global LIFE context', () => {
     const result = buildLifeGlobeSnapshot([
       { key: 1, speciesKey: 1, species: 'Blocked bird', decimalLatitude: 10, decimalLongitude: 10, license: 'CC BY-NC' },
       { key: 2, speciesKey: 2, species: 'Imprecise plant', decimalLatitude: 11, decimalLongitude: 11, coordinateUncertaintyInMeters: 80_000, license: licensed },
+      { key: 3, speciesKey: 3, species: 'Attribution pending', decimalLatitude: 12, decimalLongitude: 12, license: 'http://creativecommons.org/licenses/by/4.0/legalcode' },
     ])
     expect(result.recordCount).toBe(0)
     expect(result.taxa).toHaveLength(0)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildMigrationSnapshot } from './migration'
 
-const licensed = 'http://creativecommons.org/licenses/by/4.0/legalcode'
+const licensed = 'http://creativecommons.org/publicdomain/zero/1.0/'
 const records = (latitude: number, longitude: number, offset = 0) => [0, 1, 2, 3].map((index) => ({
   key: offset + index,
   speciesKey: 2498387,
@@ -28,7 +28,7 @@ describe('migration evidence', () => {
   })
 
   it('excludes noncommercial and imprecise records', () => {
-    const blocked = records(35, -82).map((record, index) => ({ ...record, license: index ? 'CC BY-NC' : licensed, coordinateUncertaintyInMeters: index ? 100 : 80_000 }))
+    const blocked = records(35, -82).map((record, index) => ({ ...record, license: index ? 'CC BY-NC' : 'CC BY 4.0', coordinateUncertaintyInMeters: index ? 100 : 80_000 }))
     const result = buildMigrationSnapshot(blocked, blocked)
     expect(result.recentRecordCount).toBe(0)
     expect(result.corridors).toHaveLength(0)

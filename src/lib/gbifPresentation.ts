@@ -57,7 +57,7 @@ export function fetchGbifTaxonPresentation(taxonKey: number, fallbackUrl: string
     if (mediaResponse.ok) {
       const item = mediaSchema.parse(await mediaResponse.json()).results.find((candidate) => {
         const creator = candidate.creator?.trim() || candidate.rightsHolder?.trim()
-        return candidate.type === 'StillImage' && candidate.format?.startsWith('image/') && commerciallyUsable(candidate.license) && (!requiresAttribution(candidate.license) || Boolean(creator))
+        return candidate.type === 'StillImage' && candidate.format?.startsWith('image/') && commerciallyUsable(candidate.license) && (!requiresAttribution(candidate.license) || Boolean(creator) && Boolean(candidate.references))
       })
       if (item) media = { url: item.identifier, creator: item.creator?.trim() || item.rightsHolder?.trim() || 'Public domain', license: item.license!, source: item.source ?? 'GBIF species media', sourceUrl: item.references ?? fallbackUrl }
     }

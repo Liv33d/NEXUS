@@ -45,13 +45,13 @@ export interface LifeGlobeSnapshot {
   methodology: string
 }
 
-function permissiveLicense(value?: string) {
+function publicDomainLicense(value?: string) {
   const license = value?.toLowerCase() ?? ''
-  return license.includes('creativecommons.org/publicdomain/zero') || license.includes('creativecommons.org/licenses/by/4.0') || license === 'cc0_1_0' || license === 'cc_by_4_0'
+  return license.includes('creativecommons.org/publicdomain/zero') || license === 'cc0_1_0' || license === 'cc0'
 }
 
 function usable(record: LifeRecord) {
-  return Boolean(record.speciesKey && (record.species || record.scientificName)) && permissiveLicense(record.license) && (record.coordinateUncertaintyInMeters ?? 0) <= 50_000
+  return Boolean(record.speciesKey && (record.species || record.scientificName)) && publicDomainLicense(record.license) && (record.coordinateUncertaintyInMeters ?? 0) <= 50_000
 }
 
 function centroid(records: LifeRecord[]) {
@@ -97,7 +97,7 @@ export function buildLifeGlobeSnapshot(input: LifeRecord[], now = Date.now()): L
   }).sort((a, b) => b.observations - a.observations).slice(0, 36)
   return {
     cells, taxa, recordCount: records.length, retrievedAt: now, freshness: 'live',
-    methodology: 'A bounded global sample of recent CC0 and CC BY animal and plant occurrences, aggregated to coarse H3 cells. Records show where observations were published; they do not measure abundance or expose precise wildlife locations.',
+    methodology: 'A bounded global sample of recent CC0 animal and plant occurrences, aggregated to coarse H3 cells. CC BY occurrence aggregates remain excluded until dataset-level credits are preserved. Records show where observations were published; they do not measure abundance or expose precise wildlife locations.',
   }
 }
 
@@ -110,7 +110,6 @@ async function fetchTaxon(taxonKey: string, signal?: AbortSignal): Promise<LifeR
   const year = new Date().getUTCFullYear()
   const params = new URLSearchParams({ taxonKey, hasCoordinate: 'true', hasGeospatialIssue: 'false', occurrenceStatus: 'PRESENT', year: `${year - 1},${year}`, limit: String(PAGE_SIZE) })
   params.append('license', 'CC0_1_0')
-  params.append('license', 'CC_BY_4_0')
   const response = await fetchWithTimeout(`https://api.gbif.org/v1/occurrence/search?${params}`, { signal }, 12_000)
   if (!response.ok) throw providerHttpError(response, `gbif-life-${taxonKey}`)
   return responseSchema.parse(await response.json()).results
