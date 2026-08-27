@@ -3,6 +3,7 @@ import { Bell, ChevronDown, ExternalLink, MapPin, Microscope, ShieldCheck, X } f
 import type { NexusIntelligenceObject } from '../types/intelligence'
 import { enrichSelectedIntelligence } from '../lib/intelligence'
 import { adjacentSheetDetent, chooseSheetDetent, clampSheetOffset, computeSheetDetentOffsets, type SheetDetent, type SheetDetentOffsets } from '../lib/bottomSheet'
+import { isDemoIntelligence, renderableMedia } from '../lib/mediaPolicy'
 
 function relativeAge(timestamp?: number) {
   if (!timestamp) return undefined
@@ -14,6 +15,7 @@ function relativeAge(timestamp?: number) {
 }
 
 function freshnessLabel(object: NexusIntelligenceObject) {
+  if (isDemoIntelligence(object)) return 'DEMO FIXTURE · NOT LIVE'
   const age = relativeAge(object.timestamp)
   return `${object.status.replaceAll('-', ' ')}${age ? ` · ${age}` : ''}`.toUpperCase()
 }
@@ -65,8 +67,9 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
     return () => controller.abort()
   }, [object])
   const intelligence = resolved.id === object.id ? resolved : object
-  const availableMedia = intelligence.media.filter((item) => !failedMedia.has(item.id))
+  const availableMedia = renderableMedia(intelligence).filter((item) => !failedMedia.has(item.id))
   const media = availableMedia[Math.min(mediaIndex, Math.max(0, availableMedia.length - 1))]
+  const demo = isDemoIntelligence(intelligence)
   const domainClass = `intelligence-${intelligence.domain}`
   const mediaLabel = useMemo(() => media ? `${media.title}${media.observedAt ? ` · ${relativeAge(media.observedAt)}` : ''}` : undefined, [media])
 
@@ -272,9 +275,13 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
         <img src={media.url} alt={media.alt} loading="eager" decoding="async" referrerPolicy="no-referrer" onError={() => { setFailedMedia((current) => new Set([...current, media.id])); setMediaIndex(0) }}/>
         <div className="intelligence-hero-shade"/>
         <span>{mediaLabel}</span>
+        {media.sourceUrl
+          ? <a className="hero-media-credit" href={media.sourceUrl} target="_blank" rel="noreferrer" aria-label={`Media credit: ${media.attribution}`}>{media.attribution}</a>
+          : <span className="hero-media-credit">{media.attribution}</span>}
         {availableMedia.length > 1 && <div className="media-tabs" role="tablist" aria-label="Evidence media">{availableMedia.map((item, index) => <button key={item.id} className={index === mediaIndex ? 'active' : ''} role="tab" aria-selected={index === mediaIndex} onClick={() => setMediaIndex(index)}>{item.kind}</button>)}</div>}
       </div> : <div className="intelligence-hero intelligence-hero-fallback" aria-hidden="true"><span>{intelligence.domain.toUpperCase()}</span><i/></div>}
       <div className="intelligence-content">
+        {demo && <div className="demo-truth-banner"><strong>DEMONSTRATION</strong><span>Fictional fixture data · not current conditions</span></div>}
         <div className="intelligence-eyebrow"><i/>{freshnessLabel(intelligence)}{intelligence.evidence ? ` · ${intelligence.evidence}` : ''}</div>
         <h2 id="nexus-intelligence-title">{intelligence.title}</h2>
         {density !== 'simple' && intelligence.scientificName && <em className="scientific-name">{intelligence.scientificName}</em>}
