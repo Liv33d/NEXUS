@@ -49,6 +49,13 @@ function signalCollection(signals: Signal[]): FeatureCollection<Point, SignalPro
   }
 }
 
+function selectionCollection(location?: { latitude: number; longitude: number }): FeatureCollection<Point, Record<string, never>> {
+  return {
+    type: 'FeatureCollection',
+    features: location ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [location.longitude, location.latitude] } }] : [],
+  }
+}
+
 function forecastTracks(signals: Signal[]): FeatureCollection<LineString, { id: string; title: string }> {
   return { type: 'FeatureCollection', features: signals.flatMap((signal) => {
     const value = signal.attributes.forecastTrack
@@ -263,6 +270,9 @@ export default function ConnectedMapView({ signals, selected, focusLocation, onS
       map.addLayer({ id: 'nexus-signal-halo', type: 'circle', source: 'nexus-signals', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'circle-radius': ['interpolate', ['linear'], ['get', 'severity'], 0, 7, 100, 17], 'circle-opacity': .14 } })
       map.addLayer({ id: 'nexus-signal-hit', type: 'circle', source: 'nexus-signals', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': '#000000', 'circle-radius': 22, 'circle-opacity': .001 } })
       map.addLayer({ id: 'nexus-signal-points', type: 'circle', source: 'nexus-signals', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': ['match', ['get', 'type'], 'earthquake', '#ffb35c', 'fire', '#ff755e', 'weather', '#74b7ff', 'aircraft', '#8ff5e8', 'satellite', '#b9a4ff', 'space-weather', '#d6a4ff', 'media', '#f2da87', 'environment', '#74d9a1', '#c7d0d0'], 'circle-radius': ['case', ['boolean', ['feature-state', 'selected'], false], 11, ['interpolate', ['linear'], ['zoom'], 1, 3.5, 8, 7]], 'circle-opacity': ['case', ['boolean', ['feature-state', 'selected'], false], 1, .82], 'circle-stroke-width': ['case', ['boolean', ['feature-state', 'selected'], false], 3, 1.25], 'circle-stroke-color': '#ecfffc' } })
+      map.addSource('nexus-selection', { type: 'geojson', data: selectionCollection() })
+      map.addLayer({ id: 'nexus-selection-halo', type: 'circle', source: 'nexus-selection', paint: { 'circle-color': '#dffffa', 'circle-radius': 22, 'circle-opacity': .16, 'circle-blur': .18, 'circle-stroke-width': 2, 'circle-stroke-color': 'rgba(223,255,250,.65)' } })
+      map.addLayer({ id: 'nexus-selection-core', type: 'circle', source: 'nexus-selection', paint: { 'circle-color': '#effffc', 'circle-radius': 6, 'circle-opacity': 1, 'circle-stroke-width': 3, 'circle-stroke-color': '#173f3c' } })
       const selectableLayers = ['nexus-clusters', 'nexus-signal-hit', 'nexus-signal-points', 'nexus-area-fill', 'nexus-track-hit', 'nexus-life-taxa-hit', 'nexus-life-density', 'nexus-migration-hit']
       map.on('click', (event) => {
         const box: [[number, number], [number, number]] = [[event.point.x - 22, event.point.y - 22], [event.point.x + 22, event.point.y + 22]]
@@ -395,9 +405,12 @@ export default function ConnectedMapView({ signals, selected, focusLocation, onS
 
   useEffect(() => {
     const location = focusLocation ?? selected?.location
-    if (!location || !ready) return
+    const map = mapRef.current
+    if (!ready || !map) return
+    ;(map.getSource('nexus-selection') as GeoJSONSource | undefined)?.setData(selectionCollection(location))
+    if (!location) return
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    mapRef.current?.easeTo({ center: [location.longitude, location.latitude], zoom: Math.max(mapRef.current.getZoom(), 3.8), duration: reduceMotion ? 0 : 480, essential: false })
+    map.easeTo({ center: [location.longitude, location.latitude], zoom: Math.max(map.getZoom(), 3.8), duration: reduceMotion ? 0 : 480, essential: false })
   }, [focusLocation, ready, selected])
 
   useEffect(() => {

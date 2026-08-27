@@ -284,7 +284,7 @@ export async function enrichSelectedIntelligence(object: NexusIntelligenceObject
     ]
     const media = candidates.flatMap((candidate, index) => {
       const url = safeUsgsMediaUrl(candidate.entry?.url)
-      return url ? [{ id: `${object.id}-usgs-${index}`, kind: candidate.kind, role: 'current-evidence' as const, url, title: candidate.entry?.title ?? candidate.title, alt: `${candidate.title} for ${object.title}`, attribution: 'U.S. Geological Survey', sourceUrl: source.source.url, observedAt: candidate.updatedAt ?? source.timestamp, freshness: 'recent' as const }] : []
+      return url ? [{ id: `${object.id}-usgs-${index}`, kind: candidate.kind, role: 'current-evidence' as const, url, title: candidate.entry?.title ?? candidate.title, alt: `${candidate.title} for ${object.title}`, attribution: 'U.S. Geological Survey · U.S. Government work', license: 'U.S. Government work', sourceUrl: source.source.url, observedAt: candidate.updatedAt ?? source.timestamp, freshness: 'recent' as const }] : []
     })
     return media.length ? { ...object, media } : object
   } catch { return object }
