@@ -1,13 +1,17 @@
 import { z } from 'zod'
 import { validateSignal } from '../lib/signal'
 import { sanitizeAreaGeometry } from '../lib/geospatial'
+import { buildTemporal, lineage } from '../lib/temporal'
 import type { Signal } from '../types/signal'
 import { fetchWithTimeout, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
 
 const coordinate = z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)])
 const featureSchema = z.object({
   type: z.literal('Feature'),
-  properties: z.object({ stormId: z.string().max(40), name: z.string().max(300), product: z.enum(['cone', 'track']), sourceUrl: z.string().url() }),
+  properties: z.object({
+    stormId: z.string().max(40), name: z.string().max(300), product: z.enum(['cone', 'track']), sourceUrl: z.string().url(),
+    validFrom: z.string().optional(), validUntil: z.string().optional(),
+  }),
   geometry: z.discriminatedUnion('type', [
     z.object({ type: z.literal('Polygon'), coordinates: z.array(z.array(coordinate).min(4)).min(1) }),
     z.object({ type: z.literal('MultiPolygon'), coordinates: z.array(z.array(z.array(coordinate).min(4)).min(1)).min(1) }),
@@ -20,7 +24,6 @@ const cleanName = (value: string) => value.replace(/\s*\(Advisory[^)]*\).*$/i, '
 
 export function normalizeNhc(payload: unknown, retrievedAt = Date.now()): Signal[] {
   const snapshot = snapshotSchema.parse(payload)
-  const generatedAt = snapshot.generatedAt ? Date.parse(snapshot.generatedAt) : retrievedAt
   const groups = new Map<string, Array<z.infer<typeof featureSchema>>>()
   for (const feature of snapshot.features) groups.set(feature.properties.stormId, [...(groups.get(feature.properties.stormId) ?? []), feature])
   return [...groups.entries()].flatMap(([stormId, features]) => {
@@ -30,19 +33,27 @@ export function normalizeNhc(payload: unknown, retrievedAt = Date.now()): Signal
     const center = trackCoordinates[0] ?? (cone?.geometry.type === 'Polygon' ? cone.geometry.coordinates[0]?.[0] : cone?.geometry.type === 'MultiPolygon' ? cone.geometry.coordinates[0]?.[0]?.[0] : undefined)
     if (!center) return []
     const name = cleanName(track?.properties.name ?? cone?.properties.name ?? stormId.toUpperCase())
+    const parseOptional = (value?: string) => { const parsed = value ? Date.parse(value) : Number.NaN; return Number.isFinite(parsed) ? parsed : undefined }
+    const validFrom = parseOptional(track?.properties.validFrom ?? cone?.properties.validFrom)
+    const validUntil = parseOptional(track?.properties.validUntil ?? cone?.properties.validUntil)
+    // The static file's generatedAt is a build/retrieval time, never an NHC
+    // advisory issue time. Suppress legacy snapshots until authoritative
+    // validity is present instead of making an unchanged forecast look new.
+    if (validFrom === undefined || validUntil === undefined) return []
+    const issuedAt = validFrom
     const severity = /major|category [3-5]/i.test(name) ? 92 : /hurricane|typhoon/i.test(name) ? 82 : /tropical storm|cyclone/i.test(name) ? 68 : 55
     const sourceUrl = track?.properties.sourceUrl ?? cone?.properties.sourceUrl
     return [validateSignal({
       id: `nhc-${stormId}`,
-      source: { provider: 'nhc', dataset: 'NHC active tropical cyclone GIS', url: sourceUrl, retrievedAt, freshness: retrievedAt - generatedAt < 4 * 3600000 ? 'live' : 'cached' },
+      source: { provider: 'nhc', dataset: 'NHC active tropical cyclone GIS', url: sourceUrl, retrievedAt, freshness: retrievedAt - issuedAt < 4 * 3600000 ? 'live' : 'cached', ...lineage('noaa-nhc', 'official-product', `atcf:${stormId.toUpperCase()}`, String(issuedAt)) },
       type: 'weather', title: name, summary: 'Official forecast track and uncertainty geometry from the NOAA National Hurricane Center. Forecast positions and cones describe uncertainty, not a guaranteed path.',
-      timestamp: generatedAt, location: { longitude: center[0], latitude: center[1] },
+      timestamp: issuedAt, startTime: validFrom, endTime: validUntil, temporal: buildTemporal({ issuedAt, validFrom, validUntil, confirmedAt: retrievedAt, basis: 'publisher-issue' }), location: { longitude: center[0], latitude: center[1] },
       geometry: cone ? sanitizeAreaGeometry(cone.geometry as GeoJSON.Geometry) : undefined,
       severity, confidence: .98,
       entities: [{ id: `cyclone-${stormId}`, type: 'EVENT', name }],
       attributes: { stormId, forecastTrack: trackCoordinates, generatedAt: snapshot.generatedAt, geometryAuthority: 'NOAA National Hurricane Center' },
       provenance: [{ label: 'OFFICIAL_SOURCE', description: 'Forecast geometry is published by NOAA/NHC and refreshed by the NEXUS static data build. NHC warns that internet delivery is not guaranteed for life-safety decisions.', sourceUrl }],
-      expiresAt: generatedAt + 8 * 3600000,
+      expiresAt: issuedAt + 8 * 3600000,
     })]
   })
 }

@@ -1,7 +1,6 @@
 import { cellToParent, getResolution, latLngToCell } from 'h3-js'
 import type { MemoryBucket, Signal } from '../types/signal'
 
-const DAY_MS = 86_400_000
 const MEMORY_RESOLUTION = 3
 
 function dayKey(timestamp: number): string {
@@ -36,24 +35,26 @@ export function aggregateMemory(signals: Signal[], updatedAt = Date.now()): Memo
 export function discoveryMemory(current: Signal[], history: MemoryBucket[], now = Date.now()) {
   const currentCells = new Set(current.flatMap((signal) => regionalCell(signal) ?? []))
   const currentTypes = new Set(current.map((signal) => signal.type))
+  const currentProviders = new Set(current.map((signal) => signal.source.provider))
   const today = dayKey(now)
-  const relevant = history.filter((bucket) => bucket.day < today && currentCells.has(bucket.h3Index) && currentTypes.has(bucket.type))
-  const earliest = relevant.map((bucket) => Date.parse(`${bucket.day}T00:00:00Z`)).filter(Number.isFinite).sort((a, b) => a - b)[0]
-  const observedDays = earliest ? Math.max(1, Math.min(365, Math.ceil((Date.parse(`${today}T00:00:00Z`) - earliest) / DAY_MS))) : 0
+  const relevant = history.filter((bucket) => bucket.day < today && currentCells.has(bucket.h3Index) && currentTypes.has(bucket.type) && currentProviders.has(bucket.provider))
+  // The current schema cannot prove a provider successfully covered a day on
+  // which it emitted zero records. Treat only recorded days as observed rather
+  // than manufacturing zeros from outages or missed refreshes.
+  const observedDays = new Set(relevant.map((bucket) => bucket.day)).size
   const historicalCount = relevant.reduce((sum, bucket) => sum + bucket.count, 0)
+  // A count-only history cannot distinguish a true zero-event day from a
+  // provider outage. Keep the feature in learning mode until provider-run
+  // coverage envelopes supply trustworthy denominators.
   const baselineCount = observedDays ? historicalCount / observedDays : undefined
-  const established = observedDays >= 7 && baselineCount !== undefined && baselineCount >= .25
-  const deviationPercent = established ? Math.round(((current.length - baselineCount!) / baselineCount!) * 100) : undefined
   return {
-    status: established ? 'established' as const : 'learning' as const,
+    status: 'learning' as const,
     currentCount: current.length,
-    baselineCount: established ? Math.round(baselineCount! * 10) / 10 : undefined,
-    deviationPercent,
+    baselineCount: undefined,
+    deviationPercent: undefined,
     observedDays,
     regionCount: currentCells.size,
-    method: established
-      ? `Daily activity in ${currentCells.size} H3 region${currentCells.size === 1 ? '' : 's'}, compared with ${observedDays} prior calendar days stored on this device.`
-      : `Learning a local baseline from daily activity in ${currentCells.size} H3 region${currentCells.size === 1 ? '' : 's'}; seven days are required before deviation affects ranking.`,
+    method: `Learning a conservative local baseline from recorded provider activity in ${currentCells.size} H3 region${currentCells.size === 1 ? '' : 's'}. An anomaly claim remains disabled until provider coverage can distinguish true zero-event days from outages.${baselineCount === undefined ? '' : ` Recorded-event days currently average ${Math.round(baselineCount * 10) / 10} items, but that value is not used as a baseline.`}`,
   }
 }
 

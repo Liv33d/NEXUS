@@ -1,13 +1,16 @@
 import { z } from 'zod'
 import { fetchWithTimeout } from '../providers/types'
+import { isCommercialMediaLicense } from './mediaPolicy'
 
 const vernacularSchema = z.object({ results: z.array(z.object({ vernacularName: z.string().max(300), language: z.string().max(12).optional(), country: z.string().max(3).optional() })).max(500) })
-const mediaSchema = z.object({ results: z.array(z.object({ type: z.string().optional(), format: z.string().optional(), identifier: z.string().url(), license: z.string().max(300).optional(), creator: z.string().max(300).optional(), rightsHolder: z.string().max(300).optional(), source: z.string().max(500).optional(), references: z.string().url().optional() })).max(100) })
+const mediaCandidateSchema = z.object({ type: z.string().optional(), format: z.string().optional(), identifier: z.string().url(), license: z.string().max(300).optional(), creator: z.string().max(300).optional(), rightsHolder: z.string().max(300).optional(), source: z.string().max(500).optional(), references: z.string().url().optional() })
+const mediaSchema = z.object({ results: z.array(z.unknown()).max(100) })
 
 export interface TaxonMedia { url: string; creator: string; license: string; source: string; sourceUrl: string }
 export interface TaxonPresentation { commonName?: string; media?: TaxonMedia }
 interface VernacularName { vernacularName: string; language?: string; country?: string }
-const cache = new Map<number, Promise<TaxonPresentation>>()
+export interface GbifMediaCandidate { type?: string; format?: string; identifier: string; license?: string; creator?: string; rightsHolder?: string; source?: string; references?: string }
+const cache = new Map<string, TaxonPresentation>()
 
 const languageAliases: Record<string, string[]> = {
   en: ['en', 'eng'], es: ['es', 'spa'], fr: ['fr', 'fra'], de: ['de', 'deu', 'ger'], pt: ['pt', 'por'], it: ['it', 'ita'], nl: ['nl', 'nld', 'dut'],
@@ -29,41 +32,78 @@ export function selectVernacularName(names: VernacularName[], requestedLocale: s
     ?? humanNames[0]?.vernacularName
 }
 
-function commerciallyUsable(license?: string) {
-  const value = license?.toLowerCase() ?? ''
-  return value === 'cc0' || value.includes('publicdomain') || value.includes('/zero/') || ((value === 'cc by' || value.startsWith('cc by ') || value.includes('/by/4.0')) && !value.includes('-nc') && !value.includes('-nd'))
+export function normalizeGbifMediaLicense(license?: string): string | undefined {
+  const value = license?.trim().toLowerCase().replace(/\s+/g, ' ') ?? ''
+  if (!value || /(?:^|[- /])(?:nc|nd|sa)(?:[- /.]|$)/.test(value)) return undefined
+  if (/^(?:cc0|cc0[ -]1\.0)$/.test(value) || /^https?:\/\/creativecommons\.org\/publicdomain\/zero\/1\.0\/?(?:legalcode\/?)?$/.test(value)) return 'CC0-1.0'
+  if (value === 'public domain' || value === 'publicdomain' || /^https?:\/\/creativecommons\.org\/publicdomain\/mark\/1\.0\/?$/.test(value)) return 'Public Domain'
+  const label = value.match(/^cc by (1\.0|2\.0|2\.5|3\.0|4\.0)$/)
+  const url = value.match(/^https?:\/\/creativecommons\.org\/licenses\/by\/(1\.0|2\.0|2\.5|3\.0|4\.0)\/?(?:legalcode\/?)?$/)
+  const version = label?.[1] ?? url?.[1]
+  return version ? `CC BY ${version}` : undefined
 }
 
-function requiresAttribution(license?: string) {
-  const value = license?.toLowerCase() ?? ''
-  return value === 'cc by' || value.startsWith('cc by ') || value.includes('/by/4.0')
+function isHttps(value: string) {
+  try { return new URL(value).protocol === 'https:' } catch { return false }
 }
 
-export function fetchGbifTaxonPresentation(taxonKey: number, fallbackUrl: string, signal?: AbortSignal): Promise<TaxonPresentation> {
-  const cached = cache.get(taxonKey)
+/**
+ * GBIF's species-media response does not expose reliable pixel dimensions, so
+ * this intentionally does not invent a resolution/clarity score. Eligible
+ * records are ranked by reusable-license strength and metadata completeness,
+ * then by stable lexical fields so API response order cannot change the hero.
+ */
+export function selectGbifMediaCandidate(candidates: GbifMediaCandidate[]): TaxonMedia | undefined {
+  const eligible = candidates.flatMap((candidate) => {
+    const license = normalizeGbifMediaLicense(candidate.license)
+    const creator = candidate.creator?.trim() || candidate.rightsHolder?.trim()
+    const sourceUrl = candidate.references?.trim()
+    if (candidate.type !== 'StillImage'
+      || !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(candidate.format?.toLowerCase() ?? '')
+      || !license || !isCommercialMediaLicense(license)
+      || !creator || !sourceUrl || !isHttps(sourceUrl) || !isHttps(candidate.identifier)) return []
+    const licenseScore = license === 'CC0-1.0' || license === 'Public Domain' ? 20 : 10
+    const metadataScore = (candidate.creator?.trim() ? 2 : 0) + (candidate.source?.trim() ? 1 : 0)
+    return [{ candidate, creator, license, sourceUrl, score: licenseScore + metadataScore }]
+  })
+  eligible.sort((a, b) => b.score - a.score
+    || a.candidate.identifier.localeCompare(b.candidate.identifier)
+    || a.sourceUrl.localeCompare(b.sourceUrl))
+  const best = eligible[0]
+  if (!best) return undefined
+  return {
+    url: best.candidate.identifier,
+    creator: best.creator,
+    license: best.license,
+    source: best.candidate.source?.trim() || new URL(best.sourceUrl).hostname,
+    sourceUrl: best.sourceUrl,
+  }
+}
+
+export async function fetchGbifTaxonPresentation(taxonKey: number, _fallbackUrl: string, signal?: AbortSignal): Promise<TaxonPresentation> {
+  const locale = typeof navigator === 'undefined' ? 'en' : navigator.language.toLowerCase()
+  const cacheKey = `${taxonKey}:${locale}`
+  const cached = cache.get(cacheKey)
   if (cached) return cached
-  const request = (async () => {
-    const locale = typeof navigator === 'undefined' ? 'en' : navigator.language.toLowerCase()
-    const [namesResponse, mediaResponse] = await Promise.all([
-      fetchWithTimeout(`https://api.gbif.org/v1/species/${taxonKey}/vernacularNames`, { signal }, 7000),
-      fetchWithTimeout(`https://api.gbif.org/v1/species/${taxonKey}/media?limit=100`, { signal }, 7000),
-    ])
-    let commonName: string | undefined
-    if (namesResponse.ok) {
-      const names = vernacularSchema.parse(await namesResponse.json()).results
-      commonName = selectVernacularName(names, locale)
-    }
-    let media: TaxonMedia | undefined
-    if (mediaResponse.ok) {
-      const item = mediaSchema.parse(await mediaResponse.json()).results.find((candidate) => {
-        const creator = candidate.creator?.trim() || candidate.rightsHolder?.trim()
-        return candidate.type === 'StillImage' && candidate.format?.startsWith('image/') && commerciallyUsable(candidate.license) && (!requiresAttribution(candidate.license) || Boolean(creator) && Boolean(candidate.references))
-      })
-      if (item) media = { url: item.identifier, creator: item.creator?.trim() || item.rightsHolder?.trim() || 'Public domain', license: item.license!, source: item.source ?? 'GBIF species media', sourceUrl: item.references ?? fallbackUrl }
-    }
-    return { commonName, media }
-  })().catch((): TaxonPresentation => ({}))
-  cache.set(taxonKey, request)
-  void request.then((presentation) => { if (!presentation.commonName && !presentation.media) cache.delete(taxonKey) })
-  return request
+  const [namesResult, mediaResult] = await Promise.allSettled([
+    fetchWithTimeout(`https://api.gbif.org/v1/species/${taxonKey}/vernacularNames`, { signal }, 7000),
+    fetchWithTimeout(`https://api.gbif.org/v1/species/${taxonKey}/media?limit=100`, { signal }, 7000),
+  ])
+  let commonName: string | undefined
+  if (namesResult.status === 'fulfilled' && namesResult.value.ok) {
+    try { commonName = selectVernacularName(vernacularSchema.parse(await namesResult.value.json()).results, locale) } catch { /* One enhancement must not collapse the card. */ }
+  }
+  let media: TaxonMedia | undefined
+  if (mediaResult.status === 'fulfilled' && mediaResult.value.ok) {
+    try {
+      const payload = mediaSchema.parse(await mediaResult.value.json())
+      const candidates = payload.results.flatMap((candidate) => { const parsed = mediaCandidateSchema.safeParse(candidate); return parsed.success ? [parsed.data] : [] })
+      media = selectGbifMediaCandidate(candidates)
+    } catch { /* One malformed media response must not remove a valid name. */ }
+  }
+  const presentation = { commonName, media }
+  if (!signal?.aborted && (commonName || media)) cache.set(cacheKey, presentation)
+  return presentation
 }
+
+export function clearGbifPresentationCache() { cache.clear() }

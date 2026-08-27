@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { fetchWithTimeout, providerHttpError } from './types'
-import { fetchGbifTaxonPresentation, type TaxonMedia } from '../lib/gbifPresentation'
+import type { TaxonMedia } from '../lib/gbifPresentation'
 
 const occurrenceSchema = z.object({
   count: z.number().optional(),
@@ -9,6 +9,7 @@ const occurrenceSchema = z.object({
     kingdom: z.string().max(100).optional(), class: z.string().max(150).optional(), order: z.string().max(150).optional(), family: z.string().max(150).optional(),
     eventDate: z.string().optional(), basisOfRecord: z.string().max(80).optional(), datasetKey: z.string().optional(), datasetTitle: z.string().max(500).optional(),
     license: z.string().max(300).optional(), issues: z.array(z.string()).optional(), coordinateUncertaintyInMeters: z.number().optional(),
+    informationWithheld: z.string().max(1000).optional(), dataGeneralizations: z.string().max(1000).optional(),
   })).max(300),
 })
 
@@ -41,8 +42,8 @@ export interface LifeContext {
 const lifeCache = new Map<string, LifeContext>()
 
 function publicDomainLicense(value?: string): LifeTaxonSummary['license'] | undefined {
-  const license = value?.toLowerCase() ?? ''
-  if (license.includes('publicdomain') || license.includes('/zero/') || license === 'cc0') return 'CC0'
+  const license = value?.trim().toLowerCase().replace(/\/+$/, '') ?? ''
+  if (license === 'cc0' || license === 'cc0_1_0' || /^https?:\/\/creativecommons\.org\/publicdomain\/zero\/1\.0$/.test(license)) return 'CC0'
   return undefined
 }
 
@@ -73,7 +74,7 @@ export async function fetchLifeContext(latitude: number, longitude: number, sign
   for (const record of payload.results) {
     const license = publicDomainLicense(record.license)
     const scientificName = record.species ?? record.scientificName
-    if (!license || !scientificName || (record.coordinateUncertaintyInMeters ?? 0) > 50_000) continue
+    if (!license || !scientificName || record.informationWithheld || record.dataGeneralizations || (record.coordinateUncertaintyInMeters ?? 0) > 50_000) continue
     const key = scientificName.toLocaleLowerCase()
     const observedAt = record.eventDate ? Date.parse(record.eventDate) : Number.NaN
     const prior = taxa.get(key)
@@ -82,21 +83,18 @@ export async function fetchLifeContext(latitude: number, longitude: number, sign
       taxonKey: record.speciesKey,
       scientificName, commonName: record.vernacularName, kingdom: record.kingdom, taxonomicClass: record.class,
       count: 1, latestObservation: Number.isFinite(observedAt) ? observedAt : undefined, license,
-      occurrenceUrl: `https://www.gbif.org/occurrence/${record.key}`, datasetTitle: record.datasetTitle, basisOfRecord: record.basisOfRecord,
+      occurrenceUrl: record.speciesKey ? `https://www.gbif.org/species/${record.speciesKey}` : 'https://www.gbif.org/species/search', datasetTitle: record.datasetTitle, basisOfRecord: record.basisOfRecord,
     })
   }
-  const ranked = [...taxa.values()].sort((a, b) => b.count - a.count || (b.latestObservation ?? 0) - (a.latestObservation ?? 0)).slice(0, 10)
-  const enriched = await Promise.all(ranked.slice(0, 6).map(async (taxon) => {
-    if (!taxon.taxonKey) return taxon
-    const presentation = await fetchGbifTaxonPresentation(taxon.taxonKey, taxon.occurrenceUrl, signal)
-    return { ...taxon, commonName: presentation.commonName ?? taxon.commonName, media: presentation.media }
-  }))
+  const ranked = [...taxa.values()].filter((taxon) => taxon.count >= 5).sort((a, b) => b.count - a.count || (b.latestObservation ?? 0) - (a.latestObservation ?? 0)).slice(0, 10)
   const context = {
     radiusKm, sampledRecords: payload.results.length, totalMatchingRecords: payload.count ?? payload.results.length,
-    taxa: [...enriched, ...ranked.slice(6)],
+    taxa: ranked,
     retrievedAt: now, sourceUrl,
     methodology: 'A bounded sample of recent georeferenced GBIF occurrences. Only CC0 records with acceptable coordinate uncertainty are summarized; CC BY aggregates remain excluded until dataset-level credits are preserved. Counts describe records, not abundance or population.',
   }
   lifeCache.set(cacheKey, context)
   return context
 }
+
+export function clearLifeContextCache() { lifeCache.clear() }

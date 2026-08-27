@@ -1,15 +1,10 @@
 import type { IntelligenceMedia, NexusIntelligenceObject } from '../types/intelligence'
 
-const COMMERCIAL_LICENSE_MARKERS = [
-  'cc0',
-  'public domain',
-  'publicdomain',
-  'creativecommons.org/publicdomain/zero',
-  'cc by',
-  'creativecommons.org/licenses/by/',
-  'u.s. government work',
-  'us government work',
-]
+const EXACT_LICENSE_LABELS = new Set([
+  'cc0', 'cc0 1.0', 'cc0-1.0', 'public domain', 'publicdomain',
+  'cc by 1.0', 'cc by 2.0', 'cc by 2.5', 'cc by 3.0', 'cc by 4.0',
+  'u.s. government work', 'us government work',
+])
 
 function safeUrl(value: string, allowFixtureData: boolean) {
   if (allowFixtureData && value.startsWith('data:image/')) return true
@@ -17,9 +12,16 @@ function safeUrl(value: string, allowFixtureData: boolean) {
 }
 
 export function isCommercialMediaLicense(license?: string) {
-  const normalized = license?.trim().toLowerCase() ?? ''
-  if (!normalized || normalized.includes('-nc') || normalized.includes('/nc/')) return false
-  return COMMERCIAL_LICENSE_MARKERS.some((marker) => normalized.includes(marker))
+  const normalized = license?.trim().toLowerCase().replace(/\s+/g, ' ') ?? ''
+  if (!normalized) return false
+  if (EXACT_LICENSE_LABELS.has(normalized)) return true
+  try {
+    const url = new URL(normalized)
+    if (url.protocol !== 'https:' || url.hostname !== 'creativecommons.org') return false
+    const path = url.pathname.replace(/\/+$/, '')
+    return /^\/publicdomain\/(zero|mark)\/1\.0$/.test(path)
+      || /^\/licenses\/by\/(1\.0|2\.0|2\.5|3\.0|4\.0)$/.test(path)
+  } catch { return false }
 }
 
 export function isDemoIntelligence(object: NexusIntelligenceObject) {

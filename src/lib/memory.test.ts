@@ -12,14 +12,25 @@ describe('planetary memory', () => {
     expect(buckets[0]?.h3Index).toBe(regionalCell(signal))
   })
 
-  it('only establishes a baseline after seven genuine calendar days', () => {
+  it('never establishes an anomaly baseline without provider coverage denominators', () => {
     const now = Date.UTC(2026, 7, 20, 12)
     const signal = createDemoSignals(now)[0]!
-    const historySignals = Array.from({ length: 8 }, (_, day) => ({ ...signal, id: `${signal.id}-history-${day}`, timestamp: now - (day + 1) * 86400000 }))
+    const historySignals = Array.from({ length: 28 }, (_, day) => ({ ...signal, id: `${signal.id}-history-${day}`, timestamp: now - (day + 1) * 86400000 }))
+    const learning = discoveryMemory([signal], aggregateMemory(historySignals.slice(0, 27), now), now)
     const memory = discoveryMemory([signal, { ...signal, id: `${signal.id}-current-2` }], aggregateMemory(historySignals, now), now)
-    expect(memory.status).toBe('established')
-    expect(memory.baselineCount).toBe(1)
-    expect(memory.deviationPercent).toBe(100)
-    expect(deviationWeight(memory.deviationPercent)).toBeGreaterThan(0)
+    expect(learning.status).toBe('learning')
+    expect(memory.status).toBe('learning')
+    expect(memory.baselineCount).toBeUndefined()
+    expect(memory.deviationPercent).toBeUndefined()
+    expect(deviationWeight(memory.deviationPercent)).toBe(0)
+  })
+
+  it('does not treat a long gap between recorded days as observed zero activity', () => {
+    const now = Date.UTC(2026, 7, 20, 12)
+    const signal = createDemoSignals(now)[0]!
+    const sparse = [1, 100].map((day) => ({ ...signal, id: `${signal.id}-${day}`, timestamp: now - day * 86400000 }))
+    const memory = discoveryMemory([signal], aggregateMemory(sparse, now), now)
+    expect(memory.status).toBe('learning')
+    expect(memory.observedDays).toBe(2)
   })
 })

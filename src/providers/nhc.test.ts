@@ -6,7 +6,7 @@ describe('NHC cyclone provider', () => {
     const payload = {
       generatedAt: '2026-08-20T12:00:00Z',
       features: [
-        { type: 'Feature', properties: { stormId: 'al012026', name: 'Hurricane Example (Advisory #4) - Forecast Track', product: 'track', sourceUrl: 'https://www.nhc.noaa.gov/example-track.kmz' }, geometry: { type: 'LineString', coordinates: [[-60, 20], [-62, 22]] } },
+        { type: 'Feature', properties: { stormId: 'al012026', name: 'Hurricane Example (Advisory #4) - Forecast Track', product: 'track', sourceUrl: 'https://www.nhc.noaa.gov/example-track.kmz', validFrom: '2026-08-20T12:00:00Z', validUntil: '2026-08-25T12:00:00Z' }, geometry: { type: 'LineString', coordinates: [[-60, 20], [-62, 22]] } },
         { type: 'Feature', properties: { stormId: 'al012026', name: 'Hurricane Example (Advisory #4) - Forecast Track Uncertainty', product: 'cone', sourceUrl: 'https://www.nhc.noaa.gov/example-cone.kmz' }, geometry: { type: 'Polygon', coordinates: [[[-61, 19], [-59, 19], [-61, 23], [-61, 19]]] } },
       ],
     }
@@ -16,5 +16,17 @@ describe('NHC cyclone provider', () => {
     expect(signal?.geometry?.type).toBe('Polygon')
     expect(signal?.attributes.forecastTrack).toEqual([[-60, 20], [-62, 22]])
     expect(signal?.provenance[0]?.label).toBe('OFFICIAL_SOURCE')
+    expect(signal?.temporal?.issuedAt).toBe(Date.parse('2026-08-20T12:00:00Z'))
+    expect(signal?.temporal?.validUntil).toBe(Date.parse('2026-08-25T12:00:00Z'))
+    expect(signal?.temporal?.retrievedAt).toBe(Date.parse('2026-08-20T13:00:00Z'))
+    expect(signal?.source.upstreamKey).toBe('atcf:AL012026')
+  })
+
+  it('suppresses legacy snapshots whose build time is the only available time', () => {
+    const result = normalizeNhc({
+      generatedAt: '2026-08-20T12:00:00Z',
+      features: [{ type: 'Feature', properties: { stormId: 'al012026', name: 'Example track', product: 'track', sourceUrl: 'https://www.nhc.noaa.gov/' }, geometry: { type: 'LineString', coordinates: [[-60, 20], [-62, 22]] } }],
+    }, Date.UTC(2026, 7, 20, 13))
+    expect(result).toEqual([])
   })
 })

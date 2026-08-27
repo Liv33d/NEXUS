@@ -20,8 +20,9 @@ describe('composable Earth layers', () => {
     expect(allLayerIds).toEqual(expect.arrayContaining(layerPresets.world))
   })
 
-  it('adds contextual atmosphere to migration without making it exclusive', () => {
-    expect(layerPresets.migration).toEqual(expect.arrayContaining(['migration', 'life', 'clouds', 'weather-alerts']))
+  it('keeps LIFE observational and excludes inferred migration corridors', () => {
+    expect(layerPresets.life).toEqual(expect.arrayContaining(['life', 'environment']))
+    expect(allLayerIds).not.toContain('migration')
   })
 
   it('routes provider-specific phenomena before generic signal categories', () => {

@@ -1,5 +1,6 @@
 import { db } from '../lib/db'
 import { validateSignal } from '../lib/signal'
+import { buildTemporal, lineage } from '../lib/temporal'
 import type { Signal } from '../types/signal'
 import { fetchWithTimeout, ProviderError, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
 
@@ -42,12 +43,13 @@ export function normalizeFirmsCsv(csv: string, retrievedAt = Date.now()): Signal
   if (csv.length > 12_000_000) throw new ProviderError('FIRMS response exceeded the safe size limit', 'firms', false)
   const lines = csv.trim().split(/\r?\n/)
   if (lines.length < 2) return []
+  if (lines.length - 1 > 12_000) throw new ProviderError('FIRMS record cap exceeded; coverage is unknown, so the partial response was rejected', 'firms', true)
   const headerLine = lines.shift()
   if (!headerLine) return []
   const headers = parseCsvLine(headerLine).map((header) => header.trim().toLowerCase())
   const index = Object.fromEntries(headers.map((header, position) => [header, position]))
   const cell = (row: string[], name: string) => row[index[name] ?? -1] ?? ''
-  return lines.slice(0, 12000).flatMap((line, rowIndex) => {
+  return lines.flatMap((line) => {
     const row = parseCsvLine(line)
     const latitude = Number(cell(row, 'latitude'))
     const longitude = Number(cell(row, 'longitude'))
@@ -59,14 +61,16 @@ export function normalizeFirmsCsv(csv: string, retrievedAt = Date.now()): Signal
     const timestamp = parseAcquired(cell(row, 'acq_date'), cell(row, 'acq_time'))
     const satellite = cell(row, 'satellite') || 'Satellite'
     const instrument = cell(row, 'instrument') || 'VIIRS'
+    const upstreamKey = `firms:${satellite.toLowerCase()}:${instrument.toLowerCase()}:${timestamp}:${latitude.toFixed(4)}:${longitude.toFixed(4)}`
     const severity = Math.min(100, 24 + confidence * 35 + (Number.isFinite(frp) ? Math.min(30, Math.log10(Math.max(1, frp)) * 12) : 0))
     return [validateSignal({
-      id: `firms-${satellite}-${timestamp}-${latitude.toFixed(4)}-${longitude.toFixed(4)}-${rowIndex}`,
-      source: { provider: 'firms', dataset: 'NASA FIRMS VIIRS NOAA-20 NRT', url: 'https://firms.modaps.eosdis.nasa.gov/', retrievedAt, freshness: 'delayed' },
+      id: upstreamKey,
+      source: { provider: 'firms', dataset: 'NASA FIRMS VIIRS NOAA-20 NRT', url: 'https://firms.modaps.eosdis.nasa.gov/', retrievedAt, freshness: 'delayed', ...lineage('nasa-firms', 'primary-observation', upstreamKey) },
       type: 'fire',
       title: `Thermal detection — ${instrument} / ${satellite}`,
       summary: `Satellite thermal anomaly with ${detectionConfidence} detection confidence${Number.isFinite(frp) ? ` and ${frp.toFixed(1)} MW fire radiative power` : ''}. A thermal detection does not always indicate an uncontrolled wildfire.`,
       timestamp,
+      temporal: buildTemporal({ observedAt: timestamp, confirmedAt: retrievedAt, precision: 'minute', basis: 'sensor-observation' }),
       location: { latitude, longitude },
       severity,
       entities: [{ id: `satellite-${satellite.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, type: 'SATELLITE', name: satellite }],

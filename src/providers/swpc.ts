@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { validateSignal } from '../lib/signal'
+import { buildTemporal, lineage } from '../lib/temporal'
 import type { Signal } from '../types/signal'
 import { fetchWithTimeout, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
 
@@ -28,19 +29,24 @@ export function normalizeSwpc(payload: unknown, retrievedAt = Date.now()): Signa
     const item = current[code]
     const scale = Number(item?.Scale ?? 0)
     if (!Number.isFinite(scale) || scale <= 0) return []
+    const observedAt = Number.isFinite(date) ? date : undefined
+    const validUntil = retrievedAt + 3 * 3600000
     return [validateSignal({
       id: `swpc-${code.toLowerCase()}-${current.DateStamp ?? 'current'}-${scale}`,
-      source: { provider: 'swpc', dataset: 'NOAA Space Weather Scales', url: 'https://www.swpc.noaa.gov/noaa-scales-explanation', retrievedAt, freshness: 'live' },
+      source: { provider: 'swpc', dataset: 'NOAA Space Weather Scales', url: 'https://www.swpc.noaa.gov/noaa-scales-explanation', retrievedAt, freshness: 'live', ...lineage('noaa-swpc-scales', 'official-product', `${code}-current`, `${current.DateStamp ?? 'unknown'}-${current.TimeStamp ?? 'unknown'}-${scale}`) },
       type: 'space-weather',
       title: `${labels[code]} — ${code}${scale}`,
       summary: item?.Text ?? `${labels[code]} activity is at NOAA scale ${code}${scale}.`,
       timestamp: Number.isFinite(date) ? date : retrievedAt,
+      temporal: observedAt === undefined
+        ? buildTemporal({ confirmedAt: retrievedAt, validUntil, basis: 'current-state-confirmation' })
+        : buildTemporal({ observedAt, confirmedAt: retrievedAt, validUntil, basis: 'sensor-observation' }),
       severity: Math.min(100, 18 + scale * 16),
       confidence: .97,
       entities: [{ id: 'organization-noaa-swpc', type: 'ORGANIZATION', name: 'NOAA Space Weather Prediction Center' }],
       attributes: { scaleFamily: code, scale, global: true },
       provenance: [{ label: 'OFFICIAL_SOURCE', description: 'Current NOAA Space Weather Scale observation.', sourceUrl: 'https://www.swpc.noaa.gov/' }],
-      expiresAt: retrievedAt + 3 * 3600000,
+      expiresAt: validUntil,
     })]
   })
 }

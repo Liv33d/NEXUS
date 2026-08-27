@@ -5,7 +5,7 @@ export type LayerCost = 'low' | 'medium' | 'high'
 export type NexusLayerId =
   | 'earthquakes' | 'volcanoes' | 'fires' | 'fema' | 'weather-alerts' | 'storms'
   | 'radar' | 'clouds' | 'environment' | 'aircraft' | 'satellites' | 'space-weather'
-  | 'migration' | 'life' | 'ocean' | 'infrastructure' | 'media'
+  | 'life' | 'ocean' | 'infrastructure' | 'media'
 
 export interface NexusLayerDefinition {
   id: NexusLayerId
@@ -30,7 +30,6 @@ export const nexusLayers: NexusLayerDefinition[] = [
   { id: 'volcanoes', label: 'Volcanoes', shortDescription: 'Official and global activity reports', category: 'HAZARDS', defaultOpacity: 1, renderOrder: 78, semanticZoom: { minAltitude: .05, maxAltitude: 5 }, performanceCost: 'low', visualization: 'points', signalTypes: ['environment'] },
   { id: 'fires', label: 'Thermal activity', shortDescription: 'Satellite thermal detections and fire events', category: 'HAZARDS', defaultOpacity: .92, renderOrder: 76, semanticZoom: { minAltitude: .05, maxAltitude: 4 }, performanceCost: 'medium', provider: 'NASA', visualization: 'clusters', signalTypes: ['fire'] },
   { id: 'fema', label: 'FEMA disasters', shortDescription: 'Recent U.S. federal disaster declarations', category: 'HUMAN', defaultOpacity: .9, renderOrder: 72, semanticZoom: { minAltitude: .08, maxAltitude: 3.5 }, performanceCost: 'low', provider: 'OpenFEMA', visualization: 'context', signalTypes: ['environment'] },
-  { id: 'migration', label: 'Bird migration', shortDescription: 'Derived changes in recent bird observations', category: 'LIFE', defaultOpacity: .9, renderOrder: 55, semanticZoom: { minAltitude: .08, maxAltitude: 4 }, performanceCost: 'medium', provider: 'GBIF', visualization: 'corridors' },
   { id: 'life', label: 'Animals & plants', shortDescription: 'Recent licensed biodiversity observations', category: 'LIFE', defaultOpacity: .82, renderOrder: 50, semanticZoom: { minAltitude: .06, maxAltitude: 3.5 }, performanceCost: 'medium', provider: 'GBIF', visualization: 'density' },
   { id: 'aircraft', label: 'Aircraft', shortDescription: 'Available public aircraft activity', category: 'HUMAN', defaultOpacity: .86, renderOrder: 85, semanticZoom: { minAltitude: .03, maxAltitude: 1.5 }, performanceCost: 'high', visualization: 'clusters', signalTypes: ['aircraft'] },
   { id: 'satellites', label: 'Satellites', shortDescription: 'Selected orbital objects', category: 'ORBIT', defaultOpacity: .88, renderOrder: 90, semanticZoom: { minAltitude: .05, maxAltitude: 5 }, performanceCost: 'medium', visualization: 'tracks', signalTypes: ['satellite'] },
@@ -45,12 +44,11 @@ export const allLayerIds = nexusLayers.map((layer) => layer.id)
 export const defaultLayerIds: NexusLayerId[] = ['earthquakes', 'volcanoes', 'fires', 'fema', 'weather-alerts', 'storms', 'environment', 'space-weather']
 export const livingEarthLayerIds: NexusLayerId[] = ['earthquakes', 'volcanoes', 'fires', 'fema', 'weather-alerts', 'storms', 'life', 'environment', 'space-weather']
 
-export const layerPresets: Record<'world' | 'weather' | 'hazards' | 'migration' | 'life' | 'maritime' | 'aviation' | 'orbit', NexusLayerId[]> = {
+export const layerPresets: Record<'world' | 'weather' | 'hazards' | 'life' | 'maritime' | 'aviation' | 'orbit', NexusLayerId[]> = {
   world: livingEarthLayerIds,
   weather: ['clouds', 'radar', 'storms', 'weather-alerts', 'environment'],
   hazards: ['earthquakes', 'volcanoes', 'fires', 'fema', 'storms', 'weather-alerts'],
-  migration: ['migration', 'life', 'clouds', 'weather-alerts'],
-  life: ['life', 'migration', 'environment'],
+  life: ['life', 'environment'],
   maritime: ['ocean', 'storms', 'weather-alerts', 'clouds'],
   aviation: ['aircraft', 'weather-alerts', 'radar', 'clouds'],
   orbit: ['satellites', 'space-weather'],

@@ -10,8 +10,8 @@ export default defineConfig({
     react(),
     VitePWA({
       disable: singleFilePreview,
-      registerType: 'autoUpdate',
-      includeAssets: ['nexus-mark.svg', 'nexus-apple-touch.png', 'nexus-icon-192.png', 'nexus-icon-512.png', 'earth-blue-marble.jpg', 'earth-topology.png', 'night-sky.png', 'data/*.json'],
+      registerType: 'prompt',
+      includeAssets: ['nexus-mark.svg', 'nexus-apple-touch.png', 'nexus-icon-192.png', 'nexus-icon-512.png', 'natural-earth-110m-countries.geojson', 'data/*.json'],
       manifest: {
         name: 'NEXUS — See the world connect',
         short_name: 'NEXUS',
@@ -31,45 +31,14 @@ export default defineConfig({
       workbox: {
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
+        // A cold offline launch uses the onboard SVG Atlas. The connected
+        // MapLibre renderer and its worker are fetched only when online, then
+        // remain eligible for the browser's normal HTTP cache.
+        globIgnores: ['**/ConnectedMapView-*.js', '**/ConnectedMapView-*.css', '**/maplibre-gl-worker-*.js'],
         runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/earthquake\.usgs\.gov\//,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'nexus-usgs',
-              networkTimeoutSeconds: 6,
-              expiration: { maxEntries: 12, maxAgeSeconds: 86400 },
-              cacheableResponse: { statuses: [0, 200] }
-            }
-          },
-          {
-            urlPattern: /^https:\/\/(api\.weather\.gov|eonet\.gsfc\.nasa\.gov|services\.swpc\.noaa\.gov|www\.gdacs\.org)\//,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'nexus-official-feeds',
-              networkTimeoutSeconds: 8,
-              expiration: { maxEntries: 30, maxAgeSeconds: 86400 },
-              cacheableResponse: { statuses: [0, 200] }
-            }
-          },
-          {
-            urlPattern: /^https:\/\/(api|air-quality-api|marine-api|geocoding-api)\.open-meteo\.com\//,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'nexus-observer-context',
-              expiration: { maxEntries: 20, maxAgeSeconds: 3600 },
-              cacheableResponse: { statuses: [0, 200] }
-            }
-          },
-          {
-            urlPattern: /^https:\/\/api\.gbif\.org\/v1\/occurrence\/search/,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'nexus-life-context',
-              expiration: { maxEntries: 12, maxAgeSeconds: 21600 },
-              cacheableResponse: { statuses: [0, 200] }
-            }
-          },
+          // Time-sensitive APIs are never service-worker cached. Normalized
+          // IndexedDB fallback is the only data cache so the UI can label it
+          // honestly as stored data with the original observation time.
           {
             urlPattern: /^https:\/\/mapservices\.weather\.noaa\.gov\//,
             handler: 'StaleWhileRevalidate',
@@ -117,7 +86,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         ...(singleFilePreview ? { inlineDynamicImports: true } : { manualChunks: {
-          globe: ['react-globe.gl', 'three'],
           storage: ['dexie'],
           spatial: ['h3-js']
         } })

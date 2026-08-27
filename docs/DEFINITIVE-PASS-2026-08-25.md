@@ -1,5 +1,7 @@
 # NEXUS definitive pass — 2026-08-25
 
+> Historical V2 record. V3 removed the migration and Solar System paths described below; see `V3_NOTES.md`.
+
 This pass deliberately prioritizes a stable, understandable Earth over feature count.
 
 ## Product decisions

@@ -18,7 +18,9 @@ const valid: IntelligenceMedia = {
 describe('media presentation policy', () => {
   it('accepts commercial Creative Commons, public-domain, and government-work labels', () => {
     for (const license of ['CC0-1.0', 'Public Domain', 'CC BY 4.0', 'U.S. Government work']) expect(isCommercialMediaLicense(license)).toBe(true)
-    for (const license of [undefined, '', 'All rights reserved', 'CC BY-NC 4.0']) expect(isCommercialMediaLicense(license)).toBe(false)
+    for (const license of [undefined, '', 'All rights reserved', 'CC BY-NC 4.0', 'Not CC BY 4.0', 'CC BY-SA 4.0', 'CC BY-ND 4.0', 'almost cc0']) expect(isCommercialMediaLicense(license)).toBe(false)
+    expect(isCommercialMediaLicense('https://creativecommons.org/licenses/by/4.0/')).toBe(true)
+    expect(isCommercialMediaLicense('https://creativecommons.org/licenses/by-sa/4.0/')).toBe(false)
   })
 
   it('requires license, attribution, traceable source, and HTTPS before rendering', () => {

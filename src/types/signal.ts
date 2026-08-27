@@ -6,6 +6,29 @@ export type SignalType = (typeof signalTypes)[number]
 export type Freshness = 'live' | 'delayed' | 'cached' | 'demo'
 export type ProvenanceLabel = 'OFFICIAL_SOURCE' | 'OPEN_DATA' | 'MEDIA_SIGNAL' | 'DERIVED_METRIC' | 'CORRELATION' | 'ESTIMATED' | 'CACHED' | 'DEMO_DATA'
 
+export type TimePrecision = 'second' | 'minute' | 'hour' | 'day' | 'unknown'
+export type TemporalBasis = 'sensor-observation' | 'event-occurrence' | 'publisher-issue' | 'product-validity' | 'current-state-confirmation' | 'retrieval-fallback' | 'legacy-unknown'
+export type SourceRole = 'primary-observation' | 'official-product' | 'aggregator' | 'administrative' | 'derived'
+
+export interface SignalTemporal {
+  observedAt?: number
+  issuedAt?: number
+  updatedAt?: number
+  validFrom?: number
+  validUntil?: number
+  confirmedAt: number
+  retrievedAt: number
+  effectiveAt: number
+  precision: TimePrecision
+  basis: TemporalBasis
+}
+
+export interface UpstreamReference {
+  sourceFamily: string
+  upstreamKey?: string
+  url?: string
+}
+
 export interface SignalEntity {
   id: string
   type: 'PERSON' | 'ORGANIZATION' | 'LOCATION' | 'AIRCRAFT' | 'SATELLITE' | 'VESSEL' | 'FACILITY' | 'EVENT' | 'COUNTRY' | 'REGION' | 'OTHER'
@@ -26,6 +49,11 @@ export interface Signal {
     url?: string
     retrievedAt: number
     freshness: Freshness
+    sourceFamily?: string
+    sourceRole?: SourceRole
+    upstreamKey?: string
+    revisionKey?: string
+    upstreamRefs?: UpstreamReference[]
   }
   type: SignalType
   title: string
@@ -33,6 +61,7 @@ export interface Signal {
   timestamp: number
   startTime?: number
   endTime?: number
+  temporal?: SignalTemporal
   location?: {
     latitude: number
     longitude: number

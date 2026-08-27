@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { validateSignal } from '../lib/signal'
+import { buildTemporal, lineage } from '../lib/temporal'
 import type { Signal, SignalType } from '../types/signal'
 import { fetchWithTimeout, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
 
@@ -51,7 +52,7 @@ function latest<T>(value: T | T[] | null | undefined): T | undefined {
 function detailsUrl(value: z.infer<typeof gdacsSchema>['features'][number]['properties']['url']): string | undefined {
   const candidate = typeof value === 'string' ? value : value?.details
   if (!candidate) return undefined
-  try { return ['https:', 'http:'].includes(new URL(candidate).protocol) ? candidate : undefined } catch { return undefined }
+  try { return new URL(candidate).protocol === 'https:' ? candidate : undefined } catch { return undefined }
 }
 
 function alertSeverity(level: string, score?: number): number {
@@ -74,15 +75,20 @@ export function normalizeGdacs(payload: unknown, retrievedAt = Date.now()): Sign
     const sourceUrl = detailsUrl(properties.url)
     const startTime = parsedTime(properties.fromdate, retrievedAt)
     const endTime = properties.todate ? parsedTime(properties.todate, retrievedAt + 7 * 86_400_000) : undefined
+    const modifiedAt = properties.datemodified ? parsedTime(properties.datemodified, retrievedAt) : undefined
+    const upstreamKey = `gdacs:${properties.eventtype.toLowerCase()}:${properties.eventid}`
+    const revisionKey = String(properties.episodeid ?? modifiedAt ?? 'current')
+    const upstreamRefs = properties.source?.trim() ? [{ sourceFamily: `gdacs-source:${properties.source.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}` }] : []
     return [validateSignal({
-      id: `gdacs-${properties.eventtype.toLowerCase()}-${properties.eventid}-${properties.episodeid ?? 'current'}`,
-      source: { provider: 'gdacs', dataset: 'GDACS global disaster alerts', url: sourceUrl, retrievedAt, freshness: 'delayed' },
+      id: `gdacs-${properties.eventtype.toLowerCase()}-${properties.eventid}`,
+      source: { provider: 'gdacs', dataset: 'GDACS global disaster alerts', url: sourceUrl, retrievedAt, freshness: 'delayed', ...lineage('gdacs', 'aggregator', upstreamKey, revisionKey, upstreamRefs) },
       type: descriptor.type,
       title: `${descriptor.label} alert — ${name}`,
       summary: `${level} GDACS alert${country ? ` affecting ${country}` : ''}. This is a global hazard-impact screening signal, not a local emergency warning.`,
       timestamp: startTime,
       startTime,
       endTime,
+      temporal: buildTemporal({ updatedAt: modifiedAt, validFrom: startTime, validUntil: endTime, confirmedAt: retrievedAt, basis: 'product-validity' }),
       location: { latitude: latitude!, longitude: longitude! },
       geometry: { type: 'Point', coordinates: [longitude!, latitude!] },
       severity: alertSeverity(level, score),

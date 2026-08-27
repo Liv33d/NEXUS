@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { validateSignal } from '../lib/signal'
+import { buildTemporal, lineage } from '../lib/temporal'
 import type { Signal, SignalType } from '../types/signal'
 import { fetchWithTimeout, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
 
@@ -62,15 +63,19 @@ export function normalizeEonet(payload: unknown, retrievedAt = Date.now()): Sign
     if (!location || Math.abs(location.latitude) > 90 || Math.abs(location.longitude) > 180) return []
     const category = p.categories[0]
     const sourceUrl = p.sources.find((source) => source.url)?.url ?? p.link
+    const observedAt = Date.parse(p.date)
+    const closedAt = p.closed ? Date.parse(p.closed) : undefined
+    const upstreamRefs = p.sources.map((source) => ({ sourceFamily: `eonet-source:${source.id.toLowerCase()}`, ...(source.url ? { url: source.url } : {}) }))
     const magnitudeBoost = typeof p.magnitudeValue === 'number' ? Math.min(18, Math.log10(Math.max(1, Math.abs(p.magnitudeValue))) * 5) : 0
     return [validateSignal({
       id: `eonet-${p.id}`,
-      source: { provider: 'eonet', dataset: 'NASA EONET v3', url: sourceUrl ?? p.link, retrievedAt, freshness: 'delayed' },
+      source: { provider: 'eonet', dataset: 'NASA EONET v3', url: sourceUrl ?? p.link, retrievedAt, freshness: 'delayed', ...lineage('nasa-eonet', 'aggregator', `eonet:${p.id}`, String(observedAt), upstreamRefs) },
       type: categoryType[category?.id ?? ''] ?? 'environment',
       title: p.title,
       summary: p.description ?? `${category?.title ?? 'Natural event'} tracked by NASA's Earth Observatory Natural Event Tracker.`,
-      timestamp: Date.parse(p.date),
-      endTime: p.closed ? Date.parse(p.closed) : undefined,
+      timestamp: observedAt,
+      endTime: closedAt,
+      temporal: buildTemporal({ observedAt, validUntil: closedAt, confirmedAt: retrievedAt, basis: closedAt ? 'event-occurrence' : 'current-state-confirmation' }),
       location,
       geometry: feature.geometry as GeoJSON.Geometry,
       magnitude: p.magnitudeValue ?? undefined,

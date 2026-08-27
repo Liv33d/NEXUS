@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { validateSignal } from '../lib/signal'
 import type { Signal } from '../types/signal'
 import { fetchWithTimeout, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
+import { buildTemporal, lineage } from '../lib/temporal'
 
 const geometrySchema = z.object({
   type: z.enum(['Point', 'Polygon', 'MultiPolygon']),
@@ -73,29 +74,32 @@ export function normalizeNws(payload: unknown, retrievedAt = Date.now()): Signal
   return collection.features.flatMap((feature) => {
     const p = feature.properties
     const location = geometryCenter(feature.geometry)
-    if (!location) return []
     // CAP identifies alerts with a URN, while the GeoJSON feature id is the
     // canonical HTTPS API document. Keep the URN as identity, never as a link.
     const sourceUrl = feature.id
     const alertId = p.id ?? feature.id
     const area = p.areaDesc?.split(';')[0]?.trim()
+    const issuedAt = time(p.sent ?? p.effective, retrievedAt)
+    const validFrom = time(p.effective ?? p.onset ?? p.sent, issuedAt)
+    const validUntil = time(p.ends ?? p.expires, retrievedAt + 6 * 3600000)
     return [validateSignal({
       id: `nws-${encodeURIComponent(alertId).slice(-180)}`,
-      source: { provider: 'nws', dataset: 'NWS Active Alerts', url: sourceUrl, retrievedAt, freshness: 'live' },
+      source: { provider: 'nws', dataset: 'NWS Active Alerts', url: sourceUrl, retrievedAt, freshness: 'live', ...lineage('noaa-nws', 'official-product', alertId, String(issuedAt)) },
       type: 'weather',
       title: `${p.event}${area ? ` — ${area}` : ''}`,
       summary: p.headline ?? p.description?.slice(0, 700) ?? `${p.event} issued by the National Weather Service.`,
-      timestamp: time(p.onset ?? p.effective ?? p.sent, retrievedAt),
-      startTime: time(p.effective ?? p.sent, retrievedAt),
-      endTime: time(p.ends ?? p.expires, retrievedAt + 6 * 3600000),
+      timestamp: issuedAt,
+      startTime: validFrom,
+      endTime: validUntil,
+      temporal: buildTemporal({ issuedAt, validFrom, validUntil, confirmedAt: retrievedAt, basis: 'product-validity' }),
       location,
-      geometry: feature.geometry as GeoJSON.Geometry,
+      geometry: feature.geometry ? feature.geometry as GeoJSON.Geometry : undefined,
       severity: alertSeverity(p.severity, p.urgency),
       confidence: confidence(p.certainty),
       entities: area ? [{ id: `region-${area.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, type: 'REGION', name: area }] : [],
-      attributes: { event: p.event, areaDescription: p.areaDesc, severity: p.severity, certainty: p.certainty, urgency: p.urgency, status: p.status, messageType: p.messageType, category: p.category, senderName: p.senderName, instruction: p.instruction?.slice(0, 2000) },
+      attributes: { event: p.event, areaDescription: p.areaDesc, geometryAvailable: Boolean(feature.geometry), severity: p.severity, certainty: p.certainty, urgency: p.urgency, status: p.status, messageType: p.messageType, category: p.category, senderName: p.senderName, instruction: p.instruction?.slice(0, 2000) },
       provenance: [{ label: 'OFFICIAL_SOURCE', description: 'Official active alert from the U.S. National Weather Service.', sourceUrl }],
-      expiresAt: time(p.ends ?? p.expires, retrievedAt + 24 * 3600000),
+      expiresAt: validUntil,
     })]
   })
 }

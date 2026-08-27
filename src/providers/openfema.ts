@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { validateSignal } from '../lib/signal'
+import { buildTemporal, lineage } from '../lib/temporal'
 import type { Signal } from '../types/signal'
 import { fetchWithTimeout, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
 
@@ -37,6 +38,9 @@ export function normalizeOpenFema(payload: unknown, retrievedAt = Date.now()): S
     const center = stateCenters[first.state]
     if (!center) return []
     const timestamp = parsed(first.declarationDate, retrievedAt)
+    const validFrom = parsed(first.incidentBeginDate, timestamp)
+    const validUntil = first.incidentEndDate ? parsed(first.incidentEndDate) : undefined
+    const updatedAt = first.lastRefresh ? parsed(first.lastRefresh, timestamp) : undefined
     const areas = [...new Set(values.map((record) => record.designatedArea).filter(Boolean))]
     const assistancePrograms = [
       values.some((record) => record.ihProgramDeclared) ? 'Individual and Households assistance' : undefined,
@@ -48,13 +52,14 @@ export function normalizeOpenFema(payload: unknown, retrievedAt = Date.now()): S
     const areaSummary = areas.length <= 2 ? areas.join(' and ') : `${areas.slice(0, 2).join(', ')} and ${areas.length - 2} other designated area${areas.length - 2 === 1 ? '' : 's'}`
     return [validateSignal({
       id: `openfema-${key}`,
-      source: { provider: 'openfema', dataset: 'OpenFEMA Disaster Declarations Summaries v2', url: sourceUrl, retrievedAt, freshness: 'delayed' },
+      source: { provider: 'openfema', dataset: 'OpenFEMA Disaster Declarations Summaries v2', url: sourceUrl, retrievedAt, freshness: 'delayed', ...lineage('openfema-disasters', 'administrative', String(first.disasterNumber), first.lastRefresh ?? first.declarationDate) },
       type: 'environment',
       title: `${first.incidentType} declaration — ${first.state}`,
       summary: `A federal ${first.declarationType === 'DR' ? 'major disaster' : first.declarationType === 'EM' ? 'emergency' : 'fire management'} declaration covers ${areaSummary || first.state}.`,
       timestamp,
-      startTime: parsed(first.incidentBeginDate, timestamp),
-      endTime: first.incidentEndDate ? parsed(first.incidentEndDate) : undefined,
+      startTime: validFrom,
+      endTime: validUntil,
+      temporal: buildTemporal({ issuedAt: timestamp, updatedAt, validFrom, validUntil, confirmedAt: retrievedAt, basis: 'publisher-issue' }),
       location: { latitude: center[0], longitude: center[1], accuracy: 500_000 },
       severity: severity(first.incidentType, first.declarationType), confidence: .99,
       entities: [{ id: `fema-disaster-${first.disasterNumber}`, type: 'EVENT', name: first.declarationTitle }, { id: `region-${first.state.toLowerCase()}`, type: 'REGION', name: first.state }],

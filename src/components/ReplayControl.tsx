@@ -1,17 +1,16 @@
 import { Pause, Play, RadioTower, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { Signal } from '../types/signal'
+import { replayBounds, signalVisibleAt } from '../lib/temporal'
 
 function clock(value: number) {
   return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-export function ReplayControl({ signals, cutoff, onCutoff }: { signals: Signal[]; cutoff?: number; onCutoff(value?: number): void }) {
+export function ReplayControl({ signals, cutoff, since, until, onCutoff }: { signals: Signal[]; cutoff?: number; since: number; until: number; onCutoff(value?: number): void }) {
   const bounds = useMemo(() => {
-    const times = signals.map((signal) => signal.timestamp).filter(Number.isFinite)
-    if (!times.length) return undefined
-    return { start: Math.min(...times), end: Math.max(...times) }
-  }, [signals])
+    return replayBounds(signals, since, until)
+  }, [signals, since, until])
   const [playing, setPlaying] = useState(false)
   const current = cutoff ?? bounds?.end
 
@@ -28,7 +27,7 @@ export function ReplayControl({ signals, cutoff, onCutoff }: { signals: Signal[]
 
   if (!bounds || current === undefined || bounds.start === bounds.end) return <div className="replay-empty"><RadioTower/><span><strong>Replay unavailable</strong><small>At least two timestamped observations are required.</small></span></div>
 
-  const visible = signals.filter((signal) => signal.timestamp <= current).length
+  const visible = signals.filter((signal) => signalVisibleAt(signal, current)).length
   return <section className="replay-control">
     <header><span><RadioTower/> Reality replay</span><strong>{visible}/{signals.length} visible</strong></header>
     <input type="range" min={bounds.start} max={bounds.end} value={current} step={Math.max(1, Math.floor((bounds.end - bounds.start) / 240))} onChange={(event) => { setPlaying(false); onCutoff(Number(event.currentTarget.value)) }} aria-label="Replay position"/>
