@@ -1,11 +1,10 @@
-import { Activity, BatteryLow, Database, ExternalLink, Gauge, KeyRound, Layers3, RefreshCw, ShieldCheck, Sparkles, Trash2, Type } from 'lucide-react'
+import { Activity, BatteryLow, Database, ExternalLink, Gauge, KeyRound, RefreshCw, ShieldCheck, Sparkles, Trash2, Type } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { providerById } from '../providers/registry'
 import type { ProviderStatus, SignalType } from '../types/signal'
 import type { InformationDensity } from './IntelligenceInspector'
 
 export type PerformanceMode = 'automatic' | 'quality' | 'battery'
-export type MapTheme = 'dark' | 'street'
 
 interface Props {
   layers: Record<SignalType, boolean>
@@ -13,14 +12,12 @@ interface Props {
   demoMode: boolean
   firmsConfigured: boolean
   performanceMode: PerformanceMode
-  mapTheme: MapTheme
   informationDensity: InformationDensity
   onToggle(type: SignalType): void
   onDemoMode(enabled: boolean): Promise<void>
   onFirmsKey(key: string): Promise<void>
   onRefresh(): Promise<void>
   onPerformance(mode: PerformanceMode): void
-  onMapTheme(theme: MapTheme): void
   onInformationDensity(density: InformationDensity): void
   onErase(): Promise<void>
 }
@@ -84,8 +81,7 @@ export default function SettingsPage(props: Props) {
       <div className="settings-segment" role="group" aria-label="Performance mode">
         {(['automatic', 'quality', 'battery'] as const).map((mode) => <button key={mode} className={props.performanceMode === mode ? 'active' : ''} onClick={() => props.onPerformance(mode)}>{mode === 'automatic' ? <Gauge/> : mode === 'quality' ? <Sparkles/> : <BatteryLow/>}<span>{mode}</span></button>)}
       </div>
-      <div className="settings-choice"><span><Layers3/>Detailed map style</span><div><button className={props.mapTheme === 'dark' ? 'active' : ''} onClick={() => props.onMapTheme('dark')}>Dark</button><button className={props.mapTheme === 'street' ? 'active' : ''} onClick={() => props.onMapTheme('street')}>Street</button></div></div>
-      <p className="setting-note">Automatic balances sharpness and battery life. Renderer styling remains consistent across the globe and detailed map.</p>
+      <p className="setting-note">Automatic balances sharpness and battery life. NEXUS uses one restrained Earth style so data remains legible at every scale.</p>
     </section>
 
     <details className="settings-advanced">

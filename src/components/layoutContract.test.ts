@@ -46,10 +46,9 @@ describe('mobile interaction layout contract', () => {
     expect(styles).toContain('.domain-lens-grid')
   })
 
-  it('opens LIFE and migration geometry through universal intelligence', () => {
-    expect(app).toContain('migrationToIntelligence(corridor')
+  it('opens privacy-safe LIFE geometry through universal intelligence', () => {
+    expect(app).not.toContain('migrationToIntelligence')
     expect(app).toContain('lifeTaxonToIntelligence(taxon')
-    expect(app).toContain('onSelectMigration={selectMigration}')
     expect(app).toContain('onSelectLife={selectLife}')
     expect(app).not.toContain('Recent observed global cloud imagery')
   })

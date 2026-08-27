@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { validateSignal } from '../lib/signal'
+import { buildTemporal, lineage } from '../lib/temporal'
 import type { Signal } from '../types/signal'
 import { fetchWithTimeout, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
 
@@ -50,16 +51,18 @@ export function normalizeVolcanoes(payload: unknown, retrievedAt = Date.now()): 
     const [longitude, latitude] = feature.geometry.coordinates
     if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return []
     const sourceUrl = properties.noticeUrl || properties.volcanoUrl || undefined
-    const observedAt = parseUsgsDate(properties.alertDate) ?? parseUsgsDate(properties.colorDate)
+    const statusIssuedAt = Math.max(parseUsgsDate(properties.alertDate) ?? 0, parseUsgsDate(properties.colorDate) ?? 0) || undefined
     const severity = Math.max(levelSeverity[alertLevel] ?? 0, colorSeverity[colorCode] ?? 0)
+    const statusLabel = activeAlertLevels.has(alertLevel) ? `Volcano ${alertLevel[0]}${alertLevel.slice(1).toLowerCase()}` : `Elevated aviation color ${colorCode}`
     return [validateSignal({
       id: `usgs-volcano-${properties.vnum || properties.volcanoCd}`,
-      source: { provider: 'usgs-volcano', dataset: 'USGS Volcano Hazards Program status', url: sourceUrl, retrievedAt, freshness: 'live' },
+      source: { provider: 'usgs-volcano', dataset: 'USGS Volcano Hazards Program status', url: sourceUrl, retrievedAt, freshness: 'live', ...lineage('usgs-vhp', 'official-product', `usgs-vhp:${properties.vnum || properties.volcanoCd}`, statusIssuedAt ? String(statusIssuedAt) : undefined) },
       type: 'environment',
-      title: `Volcano ${alertLevel === 'WARNING' ? 'Warning' : alertLevel === 'WATCH' ? 'Watch' : 'Advisory'} — ${properties.volcanoName}`,
+      title: `${statusLabel} — ${properties.volcanoName}`,
       summary: properties.noticeSynopsis ?? `${properties.volcanoName} is currently ${colorCode}/${alertLevel} according to the responsible USGS volcano observatory.`,
-      timestamp: retrievedAt,
-      startTime: observedAt,
+      timestamp: statusIssuedAt ?? retrievedAt,
+      startTime: statusIssuedAt,
+      temporal: buildTemporal({ issuedAt: statusIssuedAt, validFrom: statusIssuedAt, confirmedAt: retrievedAt, basis: 'current-state-confirmation' }),
       location: { latitude, longitude },
       geometry: feature.geometry,
       severity,
@@ -70,7 +73,7 @@ export function normalizeVolcanoes(payload: unknown, retrievedAt = Date.now()): 
       ],
       attributes: {
         alertLevel, colorCode, observatory: properties.obs.toUpperCase(), region: properties.region,
-        nvewsThreat: properties.nvewsThreat, volcanoImage: properties.volcanoImage || undefined, observedAt,
+        nvewsThreat: properties.nvewsThreat, volcanoImage: properties.volcanoImage || undefined, statusIssuedAt,
       },
       provenance: [{ label: 'OFFICIAL_SOURCE', description: 'Current alert level and aviation color code published by the USGS Volcano Hazards Program.', sourceUrl }],
       expiresAt: retrievedAt + 60 * 60000,

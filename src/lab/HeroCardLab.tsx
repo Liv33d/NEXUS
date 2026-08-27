@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { IntelligenceInspector, type InformationDensity } from '../components/IntelligenceInspector'
 import type { NexusIntelligenceObject } from '../types/intelligence'
+import type { SheetDetent } from '../lib/bottomSheet'
 import { heroCardScenarios, type HeroScenarioId } from './heroCardScenarios'
 import './hero-card-lab.css'
 
@@ -20,6 +21,7 @@ export default function HeroCardLab() {
   const [frame, setFrame] = useState<Frame>('portrait')
   const [simulateFailure, setSimulateFailure] = useState(false)
   const [visible, setVisible] = useState(true)
+  const [detent, setDetent] = useState<SheetDetent>('story')
   const scenario = heroCardScenarios.find((item) => item.id === scenarioId) ?? heroCardScenarios[0]
   const object = useMemo(() => {
     const resolved = scenario.build()
@@ -36,7 +38,7 @@ export default function HeroCardLab() {
     </header>
     <section className={`hero-lab-preview ${frame}`} aria-label={`${frame} Hero Card preview`}>
       <div className="hero-lab-earth"><span>EARTH REMAINS VISIBLE</span><i/></div>
-      {visible ? <IntelligenceInspector object={object} density={density} onClose={() => setVisible(false)} onWatch={() => undefined} onSelectRelated={() => undefined}/> : <button className="hero-lab-reopen" onClick={() => setVisible(true)}>Reopen {object.title}</button>}
+      {visible ? <IntelligenceInspector object={object} density={density} detent={detent} onDetentChange={setDetent} onClose={() => setVisible(false)} onWatch={() => undefined} onSelectRelated={() => undefined}/> : <button className="hero-lab-reopen" onClick={() => { setDetent('story'); setVisible(true) }}>Reopen {object.title}</button>}
     </section>
     <footer><strong>Evidence contract</strong><span>All scenarios use fixed timestamps and production normalizers. Schematic media is CC0 layout material—not real-world evidence.</span></footer>
   </main>

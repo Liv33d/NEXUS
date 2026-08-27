@@ -70,26 +70,21 @@
 
 - Endpoint: official active KML feed and the linked advisory track/cone KMZ products.
 - Authentication: none; North Atlantic, eastern Pacific, and central Pacific coverage.
-- Delivery: fetched once during the scheduled GitHub Pages build because NHC does not guarantee browser CORS. The deployed same-origin GeoJSON snapshot contains only active forecast tracks and uncertainty cones.
-- Semantics: forecast geometry is authoritative NHC output, but the cone is uncertainty—not a storm-size polygon or guaranteed path. NHC products must not be the sole input to life-safety decisions.
+- Delivery: fetched once during the scheduled GitHub Pages build because NHC does not guarantee browser CORS. Legacy snapshots that contain only a build timestamp are suppressed; NEXUS will not reinterpret build time as advisory issue time.
+- Semantics: forecast geometry is eligible only when authoritative validity is retained. The cone is uncertainty—not a storm-size polygon or guaranteed path. NHC products must not be the sole input to life-safety decisions.
 
 ## GBIF LIFE context
 
-- Endpoint: bounded `occurrence/search` query around an Observer point, capped at 120 recent records and cached in-session for six hours.
+- Endpoint: bounded `occurrence/search` queries around an Observer point or a zoomed visible Earth region. Orbit-scale LIFE makes no request.
 - Authentication: none.
-- License policy: only CC0 and CC BY records with acceptable coordinate uncertainty enter the visible summary. CC BY-NC, unknown-license, and high-uncertainty records are excluded from the commercial-ready surface.
-- Semantics: the UI reports sampled occurrence records, never population or abundance. Each taxon links to an individual occurrence and GBIF citation guidance.
+- License policy: only exact CC0 occurrence licenses with acceptable coordinate uncertainty enter spatial aggregates. Restrictive, unknown, generalized, withheld, and high-uncertainty records are excluded.
+- Privacy and semantics: cells require at least 10 qualifying records and taxa require at least 5 records in the same coarse H3 cell. The UI reports sampled published records, never population, abundance, range, or a precise wildlife location. Taxa link to species pages, never individual occurrences.
 - Names: the GBIF vernacular-name endpoint is queried for the most visible taxa. The app prefers the current locale, then English, then another published common name, and never invents one.
 - Media: GBIF species media is eligible only when its own license is CC0/public domain or CC BY. Creator, license, source URL, and taxon association remain attached to the image; NC and ND media is rejected.
 
-## GBIF Migration Watch
+## Migration inference — removed
 
-- Endpoint: keyless GBIF Occurrence Search for Aves (`taxonKey=212`).
-- Refresh/cache: opt-in only; two bounded 300-record windows, cached locally for six hours.
-- License gate: only CC0 and CC BY records are processed. CC BY-NC and unknown licenses are excluded so the architecture remains commercially viable.
-- Privacy: observations are aggregated to coarse H3 resolution 3 cells. Exact wildlife coordinates are not rendered.
-- Semantics: animated corridors are changes in per-species observation centroids across two 14-day samples. They are `DERIVED`, not individual tracks, abundance estimates, or migration forecasts. Sampling effort can dominate the pattern.
-- Interaction: corridors and H3 cells are selectable. Human-facing `from` and `toward` labels describe the earlier and recent coarse observation centers near bundled Natural Earth places; they are never presented as biological origin or destination ranges.
+The former two-sample GBIF centroid-shift experiment was deleted in V3. Page-bounded occurrence samples cannot support route, direction, abundance, or migration claims. A future movement experience requires a legitimate study-specific movement or radar product with compatible reuse terms.
 
 ## Astronomy Engine
 
@@ -108,7 +103,7 @@
 ## Natural Earth populated places
 
 - Dataset: 1:10m populated places plus 1:110m country boundaries, public domain.
-- Use: a compact 3,116-place catalog (cities of 100,000+ plus national capitals) is bundled for offline, zoom-aware globe labels; MapLibre/OpenFreeMap remains the street-level detailed view.
+- Use: bundled country geometry provides the cold-offline Atlas and MapLibre land base. The historical city catalog remains available to place/context features but is not presented as street-level coverage.
 
 ## NOAA/NWS MRMS radar
 
@@ -126,11 +121,11 @@
 - Terms: personal, educational, and small-community use with mandatory attribution; no SLA and not intended for high-volume commercial applications.
 - Decision: removed from the active product path. A future commercial NEXUS cannot quietly depend on these terms. NOAA MRMS remains the honest official regional radar layer while a sustainable global provider is evaluated.
 
-## OpenFreeMap basemap
+## OpenFreeMap Natural Earth raster
 
-- Endpoint: hosted Liberty vector style and OpenMapTiles/OSM tiles.
+- Endpoint: hosted low-zoom Natural Earth raster tiles.
 - Authentication: none; no registration or API key.
-- Use: connected high-detail map with clustered Signals, projected environmental imagery, LIFE density, and derived migration corridors.
+- Use: optional low-zoom visual enhancement behind bundled Natural Earth geography, clustered Signals, projected environmental imagery, and bounded LIFE density.
 - Resilience: a bundled Natural Earth atlas remains available as an explicit offline/failure mode.
 
 ## NASA EOSDIS GIBS imagery

@@ -3,7 +3,6 @@ import type { ProvenanceEntry, Signal } from './signal'
 export type IntelligenceKind =
   | 'signal'
   | 'species'
-  | 'migration'
   | 'life-cluster'
   | 'signal-cluster'
   | 'phenomenon'

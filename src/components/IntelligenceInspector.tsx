@@ -4,6 +4,7 @@ import type { NexusIntelligenceObject } from '../types/intelligence'
 import { enrichSelectedIntelligence } from '../lib/intelligence'
 import { adjacentSheetDetent, chooseSheetDetent, clampSheetOffset, computeSheetDetentOffsets, type SheetDetent, type SheetDetentOffsets } from '../lib/bottomSheet'
 import { isDemoIntelligence, renderableMedia } from '../lib/mediaPolicy'
+import type { InspectorLayout } from '../lib/interactionLayout'
 
 function relativeAge(timestamp?: number) {
   if (!timestamp) return undefined
@@ -28,26 +29,29 @@ const DETENT_LABELS: Record<SheetDetent, string> = {
   full: 'full',
 }
 
-export function IntelligenceInspector({ object, density = 'standard', onClose, onWatch, onSelectRelated }: {
+export function IntelligenceInspector({ object, density = 'standard', detent, onDetentChange, onLayoutChange, onClose, onWatch, onSelectRelated }: {
   object: NexusIntelligenceObject
   density?: InformationDensity
+  detent: SheetDetent
+  onDetentChange(detent: SheetDetent): void
+  onLayoutChange?(layout: InspectorLayout): void
   onClose(): void
   onWatch?(object: NexusIntelligenceObject): void
   onSelectRelated?(object: NexusIntelligenceObject): void
 }) {
-  const [detent, setDetent] = useState<SheetDetent>('peek')
   const [mediaIndex, setMediaIndex] = useState(0)
   const [failedMedia, setFailedMedia] = useState<Set<string>>(() => new Set())
   const [resolved, setResolved] = useState(object)
   const sheetRef = useRef<HTMLElement>(null)
   const handleRef = useRef<HTMLButtonElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
-  const detentRef = useRef<SheetDetent>('peek')
+  const detentRef = useRef<SheetDetent>('story')
   const offsetsRef = useRef<SheetDetentOffsets>(computeSheetDetentOffsets(640))
-  const offsetRef = useRef(offsetsRef.current.peek)
+  const offsetRef = useRef(offsetsRef.current.story)
   const reducedMotionRef = useRef(false)
-  const landscapeRef = useRef(false)
+  const landscapeRef = useRef(typeof window.matchMedia === 'function' && window.matchMedia('(orientation: landscape) and (max-height: 620px)').matches)
   const frameRef = useRef(0)
   const gestureRef = useRef<{
     pointerId: number
@@ -73,12 +77,24 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
   const domainClass = `intelligence-${intelligence.domain}`
   const mediaLabel = useMemo(() => media ? `${media.title}${media.observedAt ? ` · ${relativeAge(media.observedAt)}` : ''}` : undefined, [media])
 
+  const reportLayout = useCallback((sheet: HTMLElement, offset = offsetRef.current) => {
+    const rect = sheet.getBoundingClientRect()
+    const mode = landscapeRef.current ? 'landscape-panel' : 'portrait-sheet'
+    onLayoutChange?.({
+      mode,
+      detent: detentRef.current,
+      visibleHeight: mode === 'landscape-panel' ? rect.height : Math.max(0, rect.height - offset),
+      visibleWidth: mode === 'landscape-panel' ? rect.width : rect.width,
+    })
+  }, [onLayoutChange])
+
   const applyOffset = useCallback((offset: number) => {
     offsetRef.current = offset
     const sheet = sheetRef.current
-    if (!sheet || landscapeRef.current) return
-    sheet.style.transform = `translate3d(0, ${Math.round(offset * 100) / 100}px, 0)`
-  }, [])
+    if (!sheet) return
+    if (!landscapeRef.current) sheet.style.transform = `translate3d(0, ${Math.round(offset * 100) / 100}px, 0)`
+    if (sheet.dataset.phase !== 'dragging') reportLayout(sheet, landscapeRef.current ? 0 : offset)
+  }, [reportLayout])
 
   const syncMetrics = useCallback((sheet: HTMLElement) => {
     const fullHeight = sheet.getBoundingClientRect().height
@@ -94,12 +110,12 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
     const targetOffset = offsetsRef.current[target]
     const willMove = Math.abs(offsetRef.current - targetOffset) > .5
     detentRef.current = target
-    setDetent(target)
+    onDetentChange(target)
     if (!sheet || landscapeRef.current) return
     sheet.dataset.phase = reducedMotionRef.current || !willMove ? 'idle' : 'settling'
     applyOffset(targetOffset)
     if (reducedMotionRef.current) sheet.style.willChange = ''
-  }, [applyOffset])
+  }, [applyOffset, onDetentChange])
 
   const stepDetent = useCallback((direction: 'up' | 'down') => settleTo(adjacentSheetDetent(detentRef.current, direction)), [settleTo])
 
@@ -108,7 +124,8 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
     if (!sheet || event.target !== sheet || event.propertyName !== 'transform' || sheet.dataset.phase !== 'settling') return
     sheet.dataset.phase = 'idle'
     sheet.style.willChange = ''
-  }, [])
+    reportLayout(sheet, offsetRef.current)
+  }, [reportLayout])
 
   const onHandlePointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     if (landscapeRef.current || event.button !== 0) return
@@ -199,17 +216,18 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
     gestureRef.current = undefined
     if (activeGesture && handleRef.current?.hasPointerCapture(activeGesture.pointerId)) handleRef.current.releasePointerCapture(activeGesture.pointerId)
     suppressHandleClick.current = Boolean(activeGesture)
-    detentRef.current = 'peek'
-    setDetent('peek')
+    detentRef.current = 'story'
+    onDetentChange('story')
     setMediaIndex(0)
     setFailedMedia(new Set())
-    scrollRef.current?.scrollTo({ top: 0, behavior: 'instant' })
+    scrollRef.current?.scrollTo?.({ top: 0, behavior: 'instant' })
     const offsets = syncMetrics(sheet)
-    applyOffset(offsets.peek)
+    applyOffset(offsets.story)
     sheet.dataset.phase = 'idle'
     sheet.style.willChange = ''
-    handleRef.current?.focus({ preventScroll: true })
-  }, [applyOffset, object.id, syncMetrics])
+    const focusTarget = landscapeRef.current ? closeRef.current : handleRef.current
+    focusTarget?.focus({ preventScroll: true })
+  }, [applyOffset, object.id, onDetentChange, syncMetrics])
 
   useLayoutEffect(() => {
     detentRef.current = detent
@@ -241,6 +259,7 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
           syncMetrics(sheet)
           applyOffset(offsetsRef.current[detentRef.current])
         }
+        if (landscape.matches) reportLayout(sheet, 0)
       })
     }
     const observer = new ResizeObserver(measure)
@@ -256,7 +275,7 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
       reduced.removeEventListener('change', measure)
       window.visualViewport?.removeEventListener('resize', measure)
     }
-  }, [applyOffset, syncMetrics])
+  }, [applyOffset, reportLayout, syncMetrics])
 
   return (
     <section ref={sheetRef} className={`intelligence-inspector nexus-hero-card ${domainClass} detent-${detent}`} data-phase="idle" data-mode="portrait-sheet" role="dialog" aria-labelledby="nexus-intelligence-title" onKeyDown={onDialogKeyDown} onTransitionEnd={finishTransition}>
@@ -269,7 +288,7 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
         onPointerUp={(event) => finishPointerGesture(event)}
         onPointerCancel={(event) => finishPointerGesture(event, true)}
         onLostPointerCapture={onLostPointerCapture}><span/></button>
-      <button className="sheet-close" aria-label="Close intelligence" onClick={onClose}><X size={19}/></button>
+      <button ref={closeRef} className="sheet-close" aria-label="Close intelligence" onClick={onClose}><X size={19}/></button>
       <div ref={scrollRef} id="nexus-intelligence-content" className="intelligence-scroll">
       {media ? <div className="intelligence-hero intelligence-media-frame">
         <img src={media.url} alt={media.alt} loading="eager" decoding="async" referrerPolicy="no-referrer" onError={() => { setFailedMedia((current) => new Set([...current, media.id])); setMediaIndex(0) }}/>
@@ -278,7 +297,7 @@ export function IntelligenceInspector({ object, density = 'standard', onClose, o
         {media.sourceUrl
           ? <a className="hero-media-credit" href={media.sourceUrl} target="_blank" rel="noreferrer" aria-label={`Media credit: ${media.attribution}`}>{media.attribution}</a>
           : <span className="hero-media-credit">{media.attribution}</span>}
-        {availableMedia.length > 1 && <div className="media-tabs" role="tablist" aria-label="Evidence media">{availableMedia.map((item, index) => <button key={item.id} className={index === mediaIndex ? 'active' : ''} role="tab" aria-selected={index === mediaIndex} onClick={() => setMediaIndex(index)}>{item.kind}</button>)}</div>}
+        {availableMedia.length > 1 && <div className="media-tabs" role="group" aria-label="Evidence media">{availableMedia.map((item, index) => <button key={item.id} className={index === mediaIndex ? 'active' : ''} aria-label={`${item.title}, ${index + 1} of ${availableMedia.length}`} aria-pressed={index === mediaIndex} onClick={() => setMediaIndex(index)}>{item.kind}</button>)}</div>}
       </div> : <div className="intelligence-hero intelligence-hero-fallback" aria-hidden="true"><span>{intelligence.domain.toUpperCase()}</span><i/></div>}
       <div className="intelligence-content">
         {demo && <div className="demo-truth-banner"><strong>DEMONSTRATION</strong><span>Fictional fixture data · not current conditions</span></div>}

@@ -5,6 +5,8 @@ import { normalizeGdacs } from './gdacs'
 import { normalizeNws } from './nws'
 import { normalizeSwpc } from './swpc'
 import { normalizeVolcanoes } from './volcano'
+import { normalizeOpenFema } from './openfema'
+import { normalizeUsgs } from './usgs'
 import { providerHttpError } from './types'
 
 describe('official provider normalization', () => {
@@ -21,6 +23,17 @@ describe('official provider normalization', () => {
     expect(signal?.severity).toBe(70.1)
     expect(signal?.summary).toContain('not a local emergency warning')
     expect(signal?.geometry?.type).toBe('Point')
+    expect(signal?.id).toBe('gdacs-tc-42')
+    expect(signal?.source.revisionKey).toBe('3')
+  })
+
+  it('treats GDACS episodes as revisions of one event identity', () => {
+    const event = (episodeid: number) => ({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:[-82.46,27.95] }, properties:{ eventid:42, episodeid, eventtype:'TC', name:'Example Cyclone', alertlevel:'Orange', fromdate:'2026-08-15T12:00:00Z', datemodified:`2026-08-${15 + episodeid}T12:00:00Z`, country:'United States' } }] })
+    const [first] = normalizeGdacs(event(1), Date.parse('2026-08-16T00:00:00Z'))
+    const [second] = normalizeGdacs(event(2), Date.parse('2026-08-17T00:00:00Z'))
+    expect(first?.id).toBe(second?.id)
+    expect(first?.source.revisionKey).not.toBe(second?.source.revisionKey)
+    expect(second?.temporal?.updatedAt).toBe(Date.parse('2026-08-17T12:00:00Z'))
   })
 
   it('normalizes an NWS alert polygon with source semantics', () => {
@@ -30,6 +43,13 @@ describe('official provider normalization', () => {
     expect(signal?.location?.h3Index).toBeTruthy()
     expect(signal?.provenance[0]?.label).toBe('OFFICIAL_SOURCE')
     expect(signal?.source.url).toBe('https://api.weather.gov/alerts/urn:oid:test')
+  })
+
+  it('retains an active NWS alert without geometry for non-map surfaces', () => {
+    const [signal] = normalizeNws({ features: [{ id: 'https://api.weather.gov/alerts/no-geometry', geometry: null, properties: { id: 'urn:oid:no-geometry', areaDesc: 'Affected forecast zones', sent: '2026-08-15T20:00:00Z', effective: '2026-08-15T20:00:00Z', expires: '2026-08-15T21:00:00Z', event: 'Severe Thunderstorm Warning', severity: 'Severe', certainty: 'Likely', urgency: 'Immediate' } }] }, Date.parse('2026-08-15T20:01:00Z'))
+    expect(signal?.location).toBeUndefined()
+    expect(signal?.attributes.geometryAvailable).toBe(false)
+    expect(signal?.temporal?.basis).toBe('product-validity')
   })
 
   it('keeps only the latest EONET geometry for an event', () => {
@@ -48,6 +68,24 @@ describe('official provider normalization', () => {
     })
     expect(signals.map((signal) => signal.title)).toEqual(['Solar radiation storm — S1', 'Geomagnetic storm — G3'])
     expect(signals.every((signal) => !signal.location)).toBe(true)
+    expect(signals.every((signal) => signal.temporal?.basis === 'sensor-observation')).toBe(true)
+    expect(signals.every((signal) => signal.source.upstreamKey?.endsWith('-current'))).toBe(true)
+  })
+
+  it('keeps USGS occurrence time distinct from retrieval and product revision time', () => {
+    const observedAt = Date.parse('2026-08-20T10:00:00Z')
+    const updatedAt = Date.parse('2026-08-20T10:05:00Z')
+    const retrievedAt = Date.parse('2026-08-27T12:00:00Z')
+    const [signal] = normalizeUsgs({ features: [{ id: 'abc', properties: { mag: 4.2, place: 'Test region', time: observedAt, updated: updatedAt, url: 'https://earthquake.usgs.gov/earthquakes/eventpage/abc', detail: 'https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=abc', felt: null, cdi: null, mmi: null, alert: null, status: 'reviewed', tsunami: 0, sig: 300, type: 'earthquake', title: 'M 4.2 - Test region' }, geometry: { type: 'Point', coordinates: [-120, 35, 8] } }] }, retrievedAt)
+    expect(signal?.temporal).toMatchObject({ observedAt, updatedAt, confirmedAt: retrievedAt, effectiveAt: observedAt, basis: 'event-occurrence' })
+    expect(signal?.source.revisionKey).toBe(String(updatedAt))
+  })
+
+  it('models FEMA declaration issue, incident validity, and retrieval independently', () => {
+    const retrievedAt = Date.parse('2026-08-27T12:00:00Z')
+    const [signal] = normalizeOpenFema({ DisasterDeclarationsSummaries: [{ disasterNumber: 1234, state: 'CA', declarationType: 'DR', declarationDate: '2026-08-20T00:00:00Z', incidentType: 'Fire', declarationTitle: 'Test Fire', incidentBeginDate: '2026-08-18T00:00:00Z', incidentEndDate: '2026-08-25T00:00:00Z', designatedArea: 'Test County', lastRefresh: '2026-08-26T00:00:00Z' }] }, retrievedAt)
+    expect(signal?.temporal).toMatchObject({ issuedAt: Date.parse('2026-08-20T00:00:00Z'), validFrom: Date.parse('2026-08-18T00:00:00Z'), validUntil: Date.parse('2026-08-25T00:00:00Z'), updatedAt: Date.parse('2026-08-26T00:00:00Z'), confirmedAt: retrievedAt, basis: 'publisher-issue' })
+    expect(signal?.source.sourceRole).toBe('administrative')
   })
 
   it('parses FIRMS CSV and preserves thermal provenance', () => {
@@ -58,6 +96,17 @@ describe('official provider normalization', () => {
     expect(signal?.confidence).toBeUndefined()
     expect(signal?.attributes.confidenceLabel).toBe('high')
     expect(signal?.provenance[0]?.description).toContain('thermal detection')
+    expect(signal?.temporal?.observedAt).toBe(Date.parse('2026-08-15T19:42:00Z'))
+  })
+
+  it('keeps FIRMS identity stable when CSV row ordering changes', () => {
+    const header = 'latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,frp,daynight'
+    const rows = [
+      '34.123,-117.456,341.2,0.4,0.4,2026-08-15,1942,N20,VIIRS,h,44.6,D',
+      '34.124,-117.457,339.0,0.4,0.4,2026-08-15,1943,N20,VIIRS,n,30.1,D',
+    ]
+    const ids = (ordered: string[]) => normalizeFirmsCsv([header, ...ordered].join('\n')).map((signal) => signal.id).sort()
+    expect(ids(rows)).toEqual(ids([...rows].reverse()))
   })
 
   it('keeps only elevated official USGS volcano states', () => {
@@ -67,5 +116,9 @@ describe('official provider normalization', () => {
     expect(signals[0]?.title).toContain('Volcano Watch')
     expect(signals[0]?.severity).toBe(78)
     expect(signals[0]?.provenance[0]?.label).toBe('OFFICIAL_SOURCE')
+    expect(signals[0]?.timestamp).toBe(Date.parse('2026-08-16T12:00:00Z'))
+    expect(signals[0]?.temporal?.issuedAt).toBe(Date.parse('2026-08-16T12:00:00Z'))
+    expect(signals[0]?.temporal?.confirmedAt).toBe(Date.parse('2026-08-16T12:05:00Z'))
+    expect(signals[0]?.temporal?.observedAt).toBeUndefined()
   })
 })

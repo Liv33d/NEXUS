@@ -1,4 +1,4 @@
-import { migrationToIntelligence, placeToIntelligence, signalToIntelligence } from '../lib/intelligence'
+import { lifeTaxonToIntelligence, placeToIntelligence, signalToIntelligence } from '../lib/intelligence'
 import { normalizeFirmsCsv } from '../providers/firms'
 import { normalizeNhc } from '../providers/nhc'
 import { normalizeUsgs } from '../providers/usgs'
@@ -59,12 +59,11 @@ function fixtureObject(object: NexusIntelligenceObject, media?: NexusIntelligenc
 }
 
 function bird(): NexusIntelligenceObject {
-  const object = migrationToIntelligence({
-    id: 'lab-bird-gray-cheeked-thrush', taxonKey: 2492484, species: 'Catharus minimus', commonName: 'Gray-cheeked Thrush',
-    startLatitude: 18.2, startLongitude: -66.4, endLatitude: 35.8, endLongitude: -79.1,
-    recentObservations: 47, priorObservations: 31, distanceKm: 2_471, direction: 'northeast', confidence: .76,
-  }, HERO_LAB_TIME, 'https://www.gbif.org/species/2492484', 'Two bounded 14-day GBIF occurrence samples are compared at coarse resolution. This fixture tests presentation; it is not an occurrence citation.')
-  return fixtureObject(object, [{
+  const object = lifeTaxonToIntelligence({
+    id: 'lab-bird-gray-cheeked-thrush', taxonKey: 2492484, scientificName: 'Catharus minimus', commonName: 'Gray-cheeked Thrush',
+    observations: 47, latitude: 35.8, longitude: -79.1, taxonomicClass: 'Aves', sourceUrl: 'https://www.gbif.org/species/2492484',
+  }, HERO_LAB_TIME, 'Privacy-safe Golden Bird fixture using a coarse H3 presentation cell with at least five qualifying records. It does not infer migration, abundance, or range.')
+  return fixtureObject({ ...object, summary: 'Published observations document this small thrush in a coarse regional sample without exposing an individual wildlife location.', whyItMatters: 'This bird crosses continents seasonally, but this card makes no route claim from occurrence centroids.' }, [{
     id: 'lab-bird-diagram', kind: 'diagram', role: 'representative', url: diagram('GRAY-CHEEKED THRUSH', '#a5df83'),
     title: 'Bird presentation fixture', alt: 'Abstract green route used to test the bird intelligence-card layout',
     creator: 'NEXUS test suite', license: 'CC0-1.0', attribution: 'NEXUS test suite · CC0-1.0', freshness: 'derived',
@@ -75,7 +74,7 @@ function hurricane(): NexusIntelligenceObject {
   const signal = required(normalizeNhc({
     generatedAt: '2026-05-14T17:00:00Z',
     features: [
-      { type: 'Feature', properties: { stormId: 'al012026', name: 'Hurricane Iris (Advisory #8) - Forecast Track', product: 'track', sourceUrl: 'https://www.nhc.noaa.gov/' }, geometry: { type: 'LineString', coordinates: [[-67, 19], [-69, 20.5], [-72, 22.4]] } },
+      { type: 'Feature', properties: { stormId: 'al012026', name: 'Hurricane Iris (Advisory #8) - Forecast Track', product: 'track', sourceUrl: 'https://www.nhc.noaa.gov/', validFrom: '2026-05-14T17:00:00Z', validUntil: '2026-05-19T17:00:00Z' }, geometry: { type: 'LineString', coordinates: [[-67, 19], [-69, 20.5], [-72, 22.4]] } },
       { type: 'Feature', properties: { stormId: 'al012026', name: 'Hurricane Iris (Advisory #8) - Forecast Track Uncertainty', product: 'cone', sourceUrl: 'https://www.nhc.noaa.gov/' }, geometry: { type: 'Polygon', coordinates: [[[-68, 18], [-65, 19], [-71, 24], [-74, 23], [-68, 18]]] } },
     ],
   }, HERO_LAB_TIME)[0], 'hurricane')
@@ -132,7 +131,7 @@ function place(): NexusIntelligenceObject {
 }
 
 export const heroCardScenarios = [
-  { id: 'bird', label: 'Bird', build: bird, expected: { domain: 'life', title: 'Gray-cheeked Thrush', evidence: 'derived', mediaPolicy: 'licensed-fixture' } },
+  { id: 'bird', label: 'Bird', build: bird, expected: { domain: 'life', title: 'Gray-cheeked Thrush', evidence: 'observed', mediaPolicy: 'licensed-fixture' } },
   { id: 'hurricane', label: 'Hurricane', build: hurricane, expected: { domain: 'weather', title: 'Hurricane Iris is being tracked', evidence: 'predicted', mediaPolicy: 'licensed-fixture' } },
   { id: 'volcano', label: 'Volcano', build: volcano, expected: { domain: 'hazards', title: 'Kilauea', evidence: 'reported', mediaPolicy: 'honest-fallback' } },
   { id: 'earthquake', label: 'Earthquake', build: earthquake, expected: { domain: 'hazards', title: 'Strong earthquake near 84 km east of Hualien, Taiwan', evidence: 'observed', mediaPolicy: 'licensed-fixture' } },

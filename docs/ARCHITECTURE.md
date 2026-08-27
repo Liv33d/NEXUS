@@ -1,71 +1,48 @@
-# Architecture
+# NEXUS V3 architecture
 
-NEXUS is a static, local-first Progressive Web App. The core application requires no backend.
+NEXUS is a static, local-first Progressive Web App with no required account or application backend.
 
-## Boundaries
+## Core boundaries
 
-1. Provider adapters fetch and parse untrusted remote payloads.
-2. Zod validation rejects malformed coordinates, unsafe URLs, oversized collections, and invalid semantics.
-3. Valid records become normalized `Signal` objects with H3 cells and explicit provenance.
-4. IndexedDB persists recent Signals, provider state, Discoveries, settings, Watches, and bounded daily H3 Memory aggregates.
-5. Deterministic engines derive relationships and Discoveries. They do not call generative AI.
-6. Globe, onboard atlas, list, timeline, and accessibility views consume only normalized data. Provider-native geometry never bypasses the sanitizer.
+1. Provider adapters fetch and validate untrusted remote payloads.
+2. Valid records become normalized `Signal` evidence with explicit temporal basis, provenance, lineage, and expiry.
+3. IndexedDB stores bounded evidence, provider state, Watches, Cases, and learning-only regional memory.
+4. `PresentedEntity` consolidates only exact upstream identities; proximity and similar names never silently merge events.
+5. Deterministic discovery and context engines explain evidence without generative AI.
+6. `NexusIntelligenceObject` is the single presentation contract for cards, sheets, Today, Search, LIFE, clusters, places, and selected Signals.
 
-## Visualization layers
+## Earth
 
-- Earth is a compositing environment rather than a mutually exclusive mode switch. `NexusLayerDefinition` records category, render order, semantic zoom, cost, provenance, and renderer strategy. Presets add compatible layers; they never silently erase the user's enabled state.
-- The globe and detailed map use renderer-specific representations of the same active systems. LIFE becomes coarse density, migration becomes derived corridors, and high-volume Signals remain clustered or bounded. Focus changes emphasis and opacity rather than disabling unrelated layers.
-- “Show Everything” enables every supported conceptual system while the renderers preserve mobile budgets through caps, clustering, coarse H3 cells, and semantic detail.
+MapLibre GL JS is the only WebGL Earth renderer. It starts from bundled Natural Earth geography, preserves one renderer instance, caps device pixel ratio, pauses source writes and weather layers while hidden, and falls back to the onboard SVG Atlas when WebGL or the connected renderer is unavailable. The Atlas has touch pan/pinch, an uncapped selection marker, and a synchronized keyboard-accessible object list.
 
-- The globe uses bundled NASA Earth imagery so its foundational appearance remains available offline.
-- Country boundaries and a compact public-domain Natural Earth city catalog are bundled. Label density follows camera altitude and proximity, so cities emerge during regional zoom without sending a request or covering the planet in text.
-- Globe illumination is calculated per geographic surface coordinate from the current subsolar latitude/longitude. Camera rotation never influences day/night classification. Users may override live illumination with explicit full-day or full-night presentation modes.
-- The 2D investigation view uses a bundled Natural Earth SVG atlas with touch pan/pinch, zoom-aware signal thinning, and sanitized alert polygons, so geography remains available offline and on constrained iPhones.
-- Environmental raster overlays are independent of the Signal pipeline because they are visual context, not discrete claims. Each retains attribution and honest freshness details in the layer inspector. The globe and connected Detail Map use official NOAA products; neither path invents historical frames or global coverage.
-- Current merged GOES-East/West GeoColor is requested directly from NOAA/NESDIS as a WGS84 export and placed on a separate, low-opacity additive globe sphere so dark source pixels cannot extinguish the illuminated Earth. It is an observation layer, not a global forecast.
-- Browsers without WebGL 2 receive a coordinate-precise, keyboard-accessible Signal list instead of a geographically misleading illustration.
+Earth data uses stable sources for points, areas, forecast tracks, coarse LIFE cells/taxa, and the uncapped selection overlay. Pure collection builders apply deterministic spatial/domain quotas before global caps. Four semantic zoom bands change density and representation without toggling the underlying conceptual layer.
 
-### Geographic lifecycle contract
+Portrait selection opens a controlled three-detent bottom sheet; landscape uses a measured side inspector. The inspector reports settled occlusion to the renderer so camera focus remains visible. Selection acknowledgement does not wait for remote media, and full-sheet mode never moves the camera.
 
-- GlobeGL and MapLibre are long-lived renderers. Provider-status changes never recreate them.
-- Camera motion stays inside the renderer while a gesture or inertial animation is active. React receives one guarded `GeographicView` when movement settles.
-- Globe and map share that validated camera target and convert between globe altitude and map zoom, preserving context across mode switches.
-- Each renderer owns exactly one container `ResizeObserver`, coalesces resizing into animation frames, and handles WebGL context loss/restoration explicitly.
-- Signal, polygon and track changes update bounded data layers incrementally. They do not rebuild the renderer.
+Dynamic radar/satellite imagery is visual context rather than a discrete Signal. Rasters render below data and selection layers, retain source attribution, use bounded caches, and are labeled by retrieval freshness when the service does not expose an observation time.
 
-- Active NHC geometry and selected CelesTrak OMM elements are normalized during a scheduled GitHub Pages build. These small same-origin snapshots solve upstream CORS constraints and enforce provider-friendly polling without adding a proprietary runtime backend.
-- Observer's orbital propagation runs in a dedicated worker. GBIF LIFE context is bounded, permissive-license filtered, and fetched only for a selected place.
-- Migration Watch is opt-in and lazy. It compares two bounded 14-day GBIF Aves samples, rejects restrictive/unknown licenses, aggregates observations to H3 resolution 3, and renders centroid shifts as explicitly derived corridors. Raw wildlife coordinates are not exposed on the globe.
-- Solar System is a lazy-loaded renderer isolated from the long-lived Earth renderer. It is entered by continuing to zoom outward from the main globe and begins focused on Earth's calculated heliocentric position; zooming back into Earth returns to the geographic renderer. Astronomy Engine calculates heliocentric J2000 positions locally; distances and body radii are visually scaled and disclosed in-product.
+The cold offline install precaches the small Atlas path. The connected MapLibre renderer and worker are separate online chunks, avoiding unnecessary parsing on no-WebGL and offline devices.
 
-Provider failure is isolated. The application continues with cached data and its deterministic Demo Mode.
+## LIFE and media
 
-## Context engine
+LIFE queries run only after the user zooms into a bounded visible region. CC0 occurrence records are aggregated into coarse H3 resolution-3 cells. A cell needs at least ten qualifying records and a displayed taxon needs at least five records in the same cell. NEXUS stores or presents no raw occurrence coordinate, occurrence link, observer identity, inferred centroid route, abundance, range, or migration claim.
 
-`Signal` remains the evidence record. The deterministic Context Engine converts normalized fields into a progressive explanation: what happened, why it matters, what may happen next, affected area, confidence, awareness, and technical facts. Initial templates cover earthquakes, official weather/cyclone messages, FIRMS thermal observations, and FEMA declarations. Source wording and official instructions are preserved; missing facts are not inferred. The default inspector is human-facing, while provenance and methodology remain under “Show the science.”
+Species media resolves only after selection. A reusable media path requires an exact commercial-use allowlist, HTTPS asset and source URLs, creator, traceable source, supported still-image MIME, and visible attribution. Caller-bound aborted requests are never cached. One failed enhancement does not collapse the base card.
 
-## Universal intelligence objects
+## Truth and refresh
 
-`NexusIntelligenceObject` is the presentation boundary between evidence and interaction. Signals, species, derived migration corridors, coarse ecological cells, clusters, and places resolve into the same identity/media/context/movement/provenance/watch contract. Renderers emit selection events; they never build provider-specific inspectors. Portrait uses one progressive bottom inspector and landscape uses the same object in a side inspector, preserving the geographic scene.
+Each refresh owns an AbortSignal and monotonic generation. Fast providers commit progressively to the current UI; only the current generation may persist, derive, or deliver Watch triggers. A provider transport success is not automatically global truth: only semantically current records may contribute a live source, delayed responses stay labeled delayed/stored, and an empty response cannot clear prior evidence until a provider declares complete coverage.
 
-Media is selection-lazy. The resolver first uses media already attached by an authoritative provider or a license-filtered biodiversity adapter, then may request bounded official detail products such as USGS ShakeMap/DYFI images. It never preloads media for the global feed. Each media object retains kind, creator, license, source, timestamp, freshness, and accessible alternative text.
+`SignalTemporal` separates observation, issue, update, validity, confirmation, retrieval, precision, and basis. One relevance policy is used for visible windows, derivation, and Watch evaluation. Current-state products remain visible while freshly confirmed and valid even if their status began earlier; expired products are excluded everywhere.
 
-Meaningful geometry is an entrance, not decoration: globe points, species points, migration corridors, ecological H3 aggregates, and city labels are selectable. MapLibre equivalents use the same callbacks. World scale aggressively limits corridors/cells and uses thinner, lower-opacity geometry; regional zoom progressively increases detail without changing the underlying layer state.
+Legacy records without a temporal contract use retrieval fallback and cannot be reinterpreted as observations. A future database migration and provider coverage ledger remain required before persisted anomaly baselines can graduate from learning mode.
 
-## Watch pipeline
+## Failure and privacy
 
-Watch evaluation is provider-independent: `Provider → Signal → WatchRule → WatchTrigger → WatchDeliveryAdapter`. Current place/radius rules evaluate severity and optional Signal categories, persist triggers in IndexedDB, deduplicate the same Signal for 24 hours, and apply a 15-minute per-rule cooldown. The current delivery adapter is in-app; a future native adapter can add push without modifying providers.
+Provider failure is isolated. Cached evidence remains available with stored labeling; optional enhancements disappear independently. Erase removes IndexedDB, all `nexus:*` local storage, NEXUS/Workbox caches, module media/LIFE caches, Watches, selections, and in-memory state.
 
-## Performance
+Geometry is sanitized at the Signal boundary. URLs and media are synchronously checked again at render time. Demo fixtures are compiled out of production and visibly labeled when used in development.
 
-The globe and map renderers are separate lazy chunks. Visible globe points are bounded, MapLibre clusters source data, filtering occurs before rendering, high-frequency sources receive shorter retention, WebGL pauses while hidden, device pixel ratio is capped, and polling only runs while the document is visible. Radar and satellite layers are opt-in and pause under battery saver. Raster caches use strict entry and age limits. Quality, automatic, and battery modes provide explicit user control. Future high-volume adapters should normalize and H3-index in Web Workers.
+## Expansion rule
 
-IndexedDB is a progressive enhancement rather than a launch dependency. If Safari denies storage, provider retrieval and deterministic analysis continue in memory; cached history and persistence alone become unavailable. Saved-case signal references are protected from retention pruning.
-
-Ambient Earth is explicitly user-initiated. It requests the browser Screen Wake Lock where supported, fades chrome after inactivity, restores controls on touch, and releases the lock when the user leaves Earth or the mode is disabled.
-
-Geometry is validated at the normalized Signal boundary. Only bounded Point, Polygon, and MultiPolygon geometry with finite WGS84 coordinates is retained; area rings must close and the total coordinate count is capped before either renderer receives the payload.
-
-## Expansion
-
-New providers implement `SignalProvider`; new visual layers consume `Signal` subsets. Neither requires changes to the database contract or discovery engine.
+New feeds are deferred until they provide explicit coverage/completeness, truthful time semantics, stable upstream identity, licensing, failure fixtures, and a coherent intelligence-card experience. Data availability alone is not a product reason to add a layer.

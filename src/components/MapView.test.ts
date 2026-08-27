@@ -25,20 +25,17 @@ describe('onboard SVG atlas', () => {
     expect(overview.every((signal) => signal.location)).toBe(true)
   })
 
-  it('keeps LIFE density and migration corridors visible in both map renderers', () => {
+  it('keeps privacy-safe LIFE density visible in both map renderers', () => {
     const atlas = readFileSync(resolve(process.cwd(), 'src/components/MapView.tsx'), 'utf8')
     const detail = readFileSync(resolve(process.cwd(), 'src/components/ConnectedMapView.tsx'), 'utf8')
     expect(atlas).toContain('atlas-life-density')
-    expect(atlas).toContain('atlas-migration')
     expect(detail).toContain("map.addSource('nexus-life-density'")
-    expect(detail).toContain("map.addSource('nexus-migration'")
     expect(detail).toContain("getSource('nexus-life-density')")
-    expect(detail).toContain("getSource('nexus-migration')")
-    expect(detail).toContain("'nexus-migration-hit'")
+    expect(detail).not.toContain('nexus-migration')
     expect(detail).toContain('map.queryRenderedFeatures(box')
     expect(detail).toContain("'nexus-life-taxa-hit'")
     expect(detail).toContain("item.source === 'nexus-life-density'")
     expect(atlas).toContain('onSelectEcologicalCell?.(cell)')
-    expect(atlas).toContain('onSelectMigration?.(corridor)')
+    expect(atlas).not.toContain('onSelectMigration')
   })
 })

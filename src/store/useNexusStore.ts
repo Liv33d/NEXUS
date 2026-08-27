@@ -10,6 +10,10 @@ import { createPlaceWatch, evaluateWatchTriggers, inAppWatchDelivery, placeWatch
 import { aggregateMemory } from '../lib/memory'
 import type { WatchRule, WatchTrigger } from '../types/watch'
 import type { Discovery, MemoryBucket, ProviderStatus, Signal, SignalType } from '../types/signal'
+import { signalRelevantWithin, signalTemporal } from '../lib/temporal'
+import { clearGbifPresentationCache } from '../lib/gbifPresentation'
+import { clearLifeContextCache } from '../providers/gbif'
+import { discoveryUsesOnlyCurrentEvidence } from '../lib/editorial'
 
 export type ViewId = 'earth' | 'discover' | 'cases' | 'observer' | 'settings'
 export type TimeWindow = 'NOW' | '1H' | '6H' | '24H' | '7D'
@@ -54,8 +58,15 @@ interface NexusState {
 }
 
 const windowMs: Record<TimeWindow, number> = { NOW: 15 * 60000, '1H': 3600000, '6H': 21600000, '24H': 86400000, '7D': 604800000 }
+export const timeWindowSince = (window: TimeWindow, now = Date.now()) => now - windowMs[window]
 let activeRefresh: AbortController | undefined
+let activeRefreshGeneration = 0
 const recentSurprises: string[] = []
+const legacyApiCaches = ['nexus-usgs', 'nexus-official-feeds', 'nexus-observer-context', 'nexus-life-context']
+
+async function purgeLegacyApiCaches(): Promise<void> {
+  try { await Promise.all(legacyApiCaches.map((name) => caches.delete(name))) } catch { /* CacheStorage is optional. */ }
+}
 
 function cachedCopy(signal: Signal): Signal {
   return {
@@ -68,11 +79,29 @@ function cachedCopy(signal: Signal): Signal {
 async function deriveWithSaved(signals: Signal[]): Promise<Discovery[]> {
   let memory: MemoryBucket[] = []
   try { memory = await db.memory.toArray() } catch { /* Baselines remain in learning mode. */ }
-  const derived = buildDiscoveries(signals, Date.now(), memory)
+  const now = Date.now()
+  const derived = buildDiscoveries(signals.filter((signal) => signalRelevantWithin(signal, now - windowMs['7D'], now)), now, memory)
   let saved: Discovery[] = []
   try { saved = await db.discoveries.where('status').equals('saved').toArray() } catch { return derived }
   const savedById = new Map(saved.map((item) => [item.id, item]))
   return [...derived.map((item) => savedById.get(item.id) ?? item), ...saved.filter((item) => !derived.some((candidate) => candidate.id === item.id))]
+}
+
+export function protectedEvidenceIds(discoveries: Discovery[]): Set<string> {
+  return new Set(discoveries.filter((item) => item.status === 'saved').flatMap((item) => item.signalIds))
+}
+
+export function retainProtectedEvidence(current: Signal[], incoming: Signal[], providerId: string, discoveries: Discovery[]): Signal[] {
+  const protectedIds = protectedEvidenceIds(discoveries)
+  return [...new Map([
+    ...current.filter((signal) => signal.source.provider !== providerId || protectedIds.has(signal.id)),
+    ...incoming,
+  ].map((signal) => [signal.id, signal])).values()]
+}
+
+export function caseEvidenceSnapshot(signals: Signal[], discovery: Discovery): Signal[] {
+  const ids = new Set(discovery.signalIds)
+  return signals.filter((signal) => ids.has(signal.id))
 }
 
 export const useNexusStore = create<NexusState>((set, get) => ({
@@ -138,6 +167,7 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   },
   initialize: async () => {
     try {
+      await purgeLegacyApiCaches()
       await pruneDatabase()
       const [cached, storedStatuses, layerSetting, demoSetting, firmsSetting, watches, watchTriggers] = await Promise.all([
         db.signals.orderBy('timestamp').reverse().limit(3000).toArray(),
@@ -148,11 +178,19 @@ export const useNexusStore = create<NexusState>((set, get) => ({
         db.watches.toArray(),
         db.watchTriggers.toArray(),
       ])
-      const statuses = { ...get().statuses, ...Object.fromEntries(storedStatuses.map((status) => [status.providerId, status])) }
+      const statuses = { ...get().statuses, ...Object.fromEntries(storedStatuses.map((status) => [status.providerId, {
+        ...status,
+        state: status.lastSuccess ? 'cached' as const : 'idle' as const,
+        message: status.lastSuccess ? 'Stored status; checking source' : undefined,
+      }])) }
       const layerVisibility = layerSetting?.value && typeof layerSetting.value === 'object' ? { ...get().layerVisibility, ...layerSetting.value as Partial<Record<SignalType, boolean>> } : get().layerVisibility
       const demoMode = demoSetting?.value === true
       const firmsConfigured = typeof firmsSetting?.value === 'string' && firmsSetting.value.length > 0
-      if (cached.length) set({ signals: cached.map(cachedCopy), discoveries: await deriveWithSaved(cached), statuses, layerVisibility, demoMode, firmsConfigured, watches, watchTriggers })
+      const saved = await db.discoveries.where('status').equals('saved').toArray()
+      const loadedIds = new Set(cached.map((signal) => signal.id))
+      const protectedSignals = (await db.signals.bulkGet([...protectedEvidenceIds(saved)].filter((id) => !loadedIds.has(id)))).filter((signal): signal is Signal => Boolean(signal))
+      const hydrated = [...cached, ...protectedSignals]
+      if (hydrated.length) set({ signals: hydrated.map(cachedCopy), discoveries: await deriveWithSaved(hydrated), statuses, layerVisibility, demoMode, firmsConfigured, watches, watchTriggers })
       else set({ statuses, layerVisibility, demoMode, firmsConfigured, watches, watchTriggers })
     } catch {
       // Safari private browsing and low-storage conditions can disable IndexedDB.
@@ -164,6 +202,8 @@ export const useNexusStore = create<NexusState>((set, get) => ({
     activeRefresh?.abort()
     const controller = new AbortController()
     activeRefresh = controller
+    const generation = ++activeRefreshGeneration
+    const isCurrent = () => generation === activeRefreshGeneration && !controller.signal.aborted
     const { timeWindow, demoMode } = get()
     const now = Date.now()
     const context = { since: now - windowMs[timeWindow], until: now, signal: controller.signal }
@@ -171,59 +211,107 @@ export const useNexusStore = create<NexusState>((set, get) => ({
 
     if (demoMode) {
       const signals = await demoProvider.fetchSignals(context)
+      if (!isCurrent()) return
       const previous = get().watchTriggers
       const watchTriggers = get().watches.flatMap((watch) => evaluateWatchTriggers(watch, signals, previous, now))
       try { if (watchTriggers.length) await db.watchTriggers.bulkPut(watchTriggers) } catch { /* In-app trigger history remains in memory. */ }
+      if (!isCurrent()) return
       await inAppWatchDelivery.deliver(watchTriggers)
-      set({ signals, discoveries: await deriveWithSaved(signals), watchTriggers, isRefreshing: false, lastRefreshed: Date.now() })
+      if (!isCurrent()) return
+      const discoveries = await deriveWithSaved(signals)
+      if (!isCurrent()) return
+      set({ signals, discoveries, watchTriggers, isRefreshing: false, lastRefreshed: Date.now() })
       return
     }
 
-    const load = async (provider: (typeof liveProviders)[number]): Promise<Signal[]> => {
+    let discoveryRevision = 0
+    const commitProviderBatch = (providerId: string, batch: Signal[]) => {
+      if (!isCurrent()) return
+      const revision = ++discoveryRevision
+      const protectedIds = protectedEvidenceIds(get().discoveries)
+      const eligible = retainProtectedEvidence(get().signals, batch, providerId, get().discoveries)
+        .filter((signal) => protectedIds.has(signal.id) || signalRelevantWithin(signal, context.since, now))
+        .sort((a, b) => signalTemporal(b).effectiveAt - signalTemporal(a).effectiveAt)
+      const protectedSignals = eligible.filter((signal) => protectedIds.has(signal.id))
+      const liveSignals = eligible.filter((signal) => !protectedIds.has(signal.id)).slice(0, Math.max(0, 5000 - protectedSignals.length))
+      const merged = [...liveSignals, ...protectedSignals]
+      set({ signals: merged, lastRefreshed: Date.now() })
+      void deriveWithSaved(merged).then((discoveries) => {
+        if (isCurrent() && revision === discoveryRevision) set({ discoveries })
+      })
+    }
+
+    const load = async (provider: (typeof liveProviders)[number]): Promise<void> => {
       const loading: ProviderStatus = { ...get().statuses[provider.id], providerId: provider.id, providerName: provider.name, state: 'loading', lastAttempt: now }
-      set((state) => ({ statuses: { ...state.statuses, [provider.id]: loading } }))
+      if (isCurrent()) set((state) => ({ statuses: { ...state.statuses, [provider.id]: loading } }))
       try {
         const signals = await runProvider(provider, context)
-        if (controller.signal.aborted) return []
-        const status: ProviderStatus = { providerId: provider.id, providerName: provider.name, state: 'live', lastAttempt: now, lastSuccess: Date.now(), signalCount: signals.length, message: signals.length ? undefined : 'Connected; no qualifying signals' }
-        try { await db.signals.bulkPut(signals); await db.providerStatus.put(status) } catch { /* Continue in memory-only mode. */ }
+        if (!isCurrent()) return
+        const currentSignals = signals.filter((signal) => signalRelevantWithin(signal, context.since, now))
+        const semanticallyLive = currentSignals.some((signal) => signal.source.freshness === 'live')
+        const state: ProviderStatus['state'] = semanticallyLive ? 'live' : currentSignals.length ? 'cached' : 'idle'
+        const sourceAsOf = currentSignals.reduce((latest, signal) => Math.max(latest, signalTemporal(signal).effectiveAt), 0)
+        const status: ProviderStatus = { providerId: provider.id, providerName: provider.name, state, lastAttempt: now, lastSuccess: semanticallyLive ? Date.now() : sourceAsOf || undefined, signalCount: currentSignals.length, message: currentSignals.length ? semanticallyLive ? undefined : 'Checked; source data is delayed or stored' : 'Checked; no current records (coverage not asserted)' }
+        if (!isCurrent()) return
         set((state) => ({ statuses: { ...state.statuses, [provider.id]: status } }))
-        return signals
+        // Without an explicit complete-coverage envelope, an empty response
+        // cannot safely clear the prior provider slice.
+        if (currentSignals.length) commitProviderBatch(provider.id, currentSignals)
       } catch (error) {
-        if (controller.signal.aborted) return []
+        if (!isCurrent()) return
         let cached: Signal[] = []
         try { cached = await db.signals.where('source.provider').equals(provider.id).and((signal) => signal.timestamp >= context.since).toArray() } catch { /* Storage unavailable. */ }
+        if (!isCurrent()) return
         const providerError = error instanceof ProviderError ? error : undefined
         const state = providerError?.status === 429 ? 'rate-limited' : cached.length ? 'cached' : providerError?.status === 401 || !navigator.onLine ? 'unavailable' : 'error'
         const status: ProviderStatus = { providerId: provider.id, providerName: provider.name, state, lastAttempt: now, lastSuccess: get().statuses[provider.id]?.lastSuccess, retryAt: providerError?.retryAt, signalCount: cached.length, message: cached.length ? 'Live request failed; showing device cache' : providerError?.status === 401 ? 'Optional credential not configured' : 'Temporarily unavailable' }
-        try { await db.providerStatus.put(status) } catch { /* Storage unavailable. */ }
+        if (!isCurrent()) return
         set((current) => ({ statuses: { ...current.statuses, [provider.id]: status } }))
-        return cached.map(cachedCopy)
+        commitProviderBatch(provider.id, cached.map(cachedCopy))
       }
     }
 
-    const batches = await Promise.all(liveProviders.map(load))
-    if (controller.signal.aborted) return
-    const deduped = [...new Map(batches.flat().map((signal) => [signal.id, signal])).values()]
-      .filter((signal) => signal.timestamp >= context.since || (signal.endTime ?? 0) >= context.since)
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 5000)
+    await Promise.allSettled(liveProviders.map(load))
+    if (!isCurrent()) return
+    const deduped = get().signals
+    try {
+      await db.transaction('rw', db.signals, db.providerStatus, async () => {
+        if (!isCurrent()) throw new Error('STALE_REFRESH_GENERATION')
+        await db.signals.bulkPut(deduped)
+        if (!isCurrent()) throw new Error('STALE_REFRESH_GENERATION')
+        await db.providerStatus.bulkPut(Object.values(get().statuses))
+        if (!isCurrent()) throw new Error('STALE_REFRESH_GENERATION')
+      })
+    } catch { /* Continue in memory-only mode. */ }
+    if (!isCurrent()) return
     try {
       const retained = await db.signals.where('timestamp').above(now - 30 * 86400000).toArray()
+      if (!isCurrent()) return
       const buckets = aggregateMemory(retained, Date.now())
       if (buckets.length) await db.memory.bulkPut(buckets)
     } catch { /* Planetary Memory degrades to this-session learning when IndexedDB is unavailable. */ }
     const previous = get().watchTriggers
-    const watchTriggers = get().watches.flatMap((watch) => evaluateWatchTriggers(watch, deduped, previous, now))
+    const watchEvidence = deduped.filter((signal) => signalRelevantWithin(signal, context.since, now))
+    const watchTriggers = get().watches.flatMap((watch) => evaluateWatchTriggers(watch, watchEvidence, previous, now))
     try { if (watchTriggers.length) await db.watchTriggers.bulkPut(watchTriggers) } catch { /* In-app trigger history remains in memory. */ }
+    if (!isCurrent()) return
     await inAppWatchDelivery.deliver(watchTriggers)
-    set({ signals: deduped, discoveries: await deriveWithSaved(deduped), watchTriggers, isRefreshing: false, lastRefreshed: Date.now() })
+    if (!isCurrent()) return
+    const discoveries = await deriveWithSaved(deduped)
+    if (!isCurrent()) return
+    set({ signals: deduped, discoveries, watchTriggers, isRefreshing: false, lastRefreshed: Date.now() })
   },
   saveDiscovery: async (id) => {
     const discovery = get().discoveries.find((item) => item.id === id)
     if (!discovery) return
     const saved = { ...discovery, status: 'saved' as const, savedAt: discovery.savedAt ?? Date.now(), notes: discovery.notes ?? '' }
-    try { await db.discoveries.put(saved) } catch { /* Keep the case for this session. */ }
+    const evidence = caseEvidenceSnapshot(get().signals, saved)
+    try {
+      await db.transaction('rw', db.discoveries, db.signals, async () => {
+        if (evidence.length) await db.signals.bulkPut(evidence)
+        await db.discoveries.put(saved)
+      })
+    } catch { /* Keep the case and its in-memory evidence for this session. */ }
     set((state) => ({ discoveries: state.discoveries.map((item) => item.id === id ? saved : item) }))
   },
   updateCaseNotes: async (id, notes) => {
@@ -240,11 +328,18 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   },
   eraseLocalData: async () => {
     activeRefresh?.abort()
+    activeRefreshGeneration += 1
     try { await eraseDatabase() } catch { /* Storage may already be unavailable. */ }
     try {
-      for (const key of ['nexus:radar', 'nexus:satellite', 'nexus:lighting', 'nexus:performance', 'nexus:autoRotate', 'nexus:atmosphere', 'nexus:labels', 'nexus:mapTheme', 'nexus:observerPlaces', 'nexus:temperatureUnit']) localStorage.removeItem(key)
+      for (const key of Object.keys(localStorage)) if (key.startsWith('nexus:')) localStorage.removeItem(key)
     } catch { /* Private browsing may deny localStorage access. */ }
+    try {
+      const names = await caches.keys()
+      await Promise.all(names.filter((name) => name.startsWith('nexus-') || name.includes('workbox')).map((name) => caches.delete(name)))
+    } catch { /* CacheStorage may be unavailable or already empty. */ }
     recentSurprises.length = 0
+    clearGbifPresentationCache()
+    clearLifeContextCache()
     set({
       signals: [], discoveries: [], watches: [], watchTriggers: [], observerPlace: undefined, selectedSignalId: undefined, selectedDiscoveryId: undefined,
       demoMode: false, firmsConfigured: false, isRefreshing: false, lastRefreshed: undefined,
@@ -252,9 +347,11 @@ export const useNexusStore = create<NexusState>((set, get) => ({
     })
   },
   surprise: () => {
-    const { discoveries, signals } = get()
-    const pool: Array<Discovery | Signal> = discoveries.filter((item) => item.score >= 35)
-    if (!pool.length) pool.push(...signals.filter((item) => (item.severity ?? 0) >= 35))
+    const { discoveries, signals, timeWindow, layerVisibility } = get()
+    const currentSignals = filterVisibleSignals(signals, timeWindow, layerVisibility)
+    const currentIds = new Set(currentSignals.map((signal) => signal.id))
+    const pool: Array<Discovery | Signal> = discoveries.filter((item) => item.score >= 35 && discoveryUsesOnlyCurrentEvidence(item, currentIds))
+    if (!pool.length) pool.push(...currentSignals.filter((item) => (item.severity ?? 0) >= 35))
     if (!pool.length) return undefined
     const candidates = pool.filter((item) => !recentSurprises.includes(item.id))
     const available = candidates.length ? candidates : pool
@@ -274,5 +371,5 @@ export function selectVisibleSignals(state: NexusState): Signal[] {
 
 export function filterVisibleSignals(signals: Signal[], timeWindow: TimeWindow, layerVisibility: Record<SignalType, boolean>, now = Date.now()): Signal[] {
   const cutoff = now - windowMs[timeWindow]
-  return signals.filter((signal) => (signal.timestamp >= cutoff || (signal.endTime ?? 0) >= cutoff) && layerVisibility[signal.type])
+  return signals.filter((signal) => signalRelevantWithin(signal, cutoff, now) && layerVisibility[signal.type])
 }

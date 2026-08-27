@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { validateSignal } from '../lib/signal'
+import { buildTemporal, lineage } from '../lib/temporal'
 import type { Signal } from '../types/signal'
 import { fetchWithTimeout, providerHttpError, type SignalProvider, type SignalQueryContext } from './types'
 
@@ -28,11 +29,12 @@ export function normalizeUsgs(payload: unknown, retrievedAt = Date.now()): Signa
     const p = feature.properties
     return validateSignal({
       id: `usgs-${feature.id}`,
-      source: { provider: 'usgs', dataset: 'USGS Earthquakes GeoJSON', url: p.url, retrievedAt, freshness: 'live' },
+      source: { provider: 'usgs', dataset: 'USGS Earthquakes GeoJSON', url: p.url, retrievedAt, freshness: 'live', ...lineage('usgs-earthquakes', 'primary-observation', feature.id, String(p.updated)) },
       type: 'earthquake',
       title: p.title,
       summary: `${p.mag == null ? 'Unrated' : `Magnitude ${p.mag}`} earthquake${p.place ? ` near ${p.place}` : ''}; depth ${Math.round(depth)} km.`,
       timestamp: p.time,
+      temporal: buildTemporal({ observedAt: p.time, updatedAt: p.updated, confirmedAt: retrievedAt, basis: 'event-occurrence' }),
       location: { latitude, longitude, altitude: -depth * 1000 },
       geometry: feature.geometry,
       magnitude: p.mag ?? undefined,

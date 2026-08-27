@@ -23,13 +23,13 @@ describe('development-only Hero Card scenarios', () => {
     }
   })
 
-  it('keeps the bird common name first and movement explicitly derived', () => {
+  it('keeps the bird common name first without inventing movement', () => {
     const bird = heroScenario('bird').build()
     expect(bird.title).toBe('Gray-cheeked Thrush')
     expect(bird.scientificName).toBe('Catharus minimus')
-    expect(bird.status).toBe('derived')
-    expect(bird.movement?.interpretation).toContain('observation centers')
-    expect(bird.summary).toContain('not an individual migration track')
+    expect(bird.status).toBe('recent')
+    expect(bird.movement).toBeUndefined()
+    expect(bird.methodology).toContain('does not infer migration')
   })
 
   it('does not make unsupported flagship claims', () => {

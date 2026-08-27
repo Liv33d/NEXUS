@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { classifyThermalSignal, discoveryToIntelligence, ecologicalClusterToIntelligence, lifeTaxonToIntelligence, migrationToIntelligence, observerTaxonToIntelligence, orbitalPassToIntelligence, signalToIntelligence } from './intelligence'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { classifyThermalSignal, discoveryToIntelligence, ecologicalClusterToIntelligence, lifeTaxonToIntelligence, observerTaxonToIntelligence, orbitalPassToIntelligence, signalToIntelligence } from './intelligence'
 import type { Signal } from '../types/signal'
 import { createDemoSignals } from '../data/demo'
+import { buildTemporal } from './temporal'
 
 describe('universal intelligence objects', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   it('turns every normalized Signal into one human-first selectable object', () => {
     for (const signal of createDemoSignals(1_800_000_000_000)) {
       const object = signalToIntelligence(signal)
@@ -15,28 +18,15 @@ describe('universal intelligence objects', () => {
     }
   })
 
-  it('leads with a common bird name and labels movement as derived', () => {
-    const object = migrationToIntelligence({
-      id: 'migration-1', taxonKey: 1, species: 'Catharus minimus', commonName: 'Gray-cheeked Thrush',
-      startLatitude: 18.2, startLongitude: -66.4, endLatitude: 35.8, endLongitude: -79.1,
-      recentObservations: 47, priorObservations: 31, distanceKm: 2_471, direction: 'northeast', confidence: .76,
-    }, 1_800_000_000_000, 'https://www.gbif.org/', 'Two-window comparison.')
-    expect(object.title).toBe('Gray-cheeked Thrush')
-    expect(object.scientificName).toBe('Catharus minimus')
-    expect(object.status).toBe('derived')
-    expect(object.evidence).toBe('derived')
-    expect(object.confidence).toBeUndefined()
-    expect(object.movement?.interpretation).toContain('observation centers')
-    expect(object.whyItMatters).toContain('not a track')
-  })
-
   it('creates selectable species and coarse ecological cluster objects', () => {
     const species = lifeTaxonToIntelligence({ id: 'taxon-1', taxonKey: 1, scientificName: 'Setophaga ruticilla', commonName: 'American Redstart', observations: 14, latitude: 18, longitude: -66, sourceUrl: 'https://www.gbif.org/species/1' }, 1_800_000_000_000, 'Bounded sample.')
-    const cluster = ecologicalClusterToIntelligence({ id: 'h3', latitude: 18, longitude: -66, observations: 142 }, 'life', 1_800_000_000_000, 'Coarse aggregation.')
+    const cluster = ecologicalClusterToIntelligence({ id: 'h3', latitude: 18, longitude: -66, observations: 142 }, 1_800_000_000_000, 'Coarse aggregation.')
+    const cachedCluster = ecologicalClusterToIntelligence({ id: 'stored-h3', latitude: 18, longitude: -66, observations: 142 }, 1_800_000_000_000, 'Stored coarse aggregation.', 'cached')
     expect(species.title).toBe('American Redstart')
     expect(species.scientificName).toBe('Setophaga ruticilla')
-    expect(cluster.title).toBe('142 life observations')
+    expect(cluster.title).toBe('142 life observation records')
     expect(cluster.methodology).toContain('Coarse aggregation')
+    expect(cachedCluster.status).toBe('cached')
   })
 
   it('turns a discovery into one phenomenon with selectable evidence', () => {
@@ -74,6 +64,37 @@ describe('universal intelligence objects', () => {
     expect(classifyThermalSignal(thermal, [evidence('eonet', 34.01, now - 25 * 3_600_000)]).classification).toBe('unclassified')
     expect(classifyThermalSignal(thermal, [evidence('demo', 34.01, now)]).classification).toBe('unclassified')
     expect(classifyThermalSignal(thermal, [evidence('eonet', 34.01, now)]).classification).toBe('possible-fire')
+  })
+
+  it('never describes delayed or cached evidence as near-real-time', () => {
+    const now = 1_800_000_000_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const base: Signal = { id: 'signal', source: { provider: 'test', retrievedAt: now, freshness: 'live' }, type: 'weather', title: 'Signal', timestamp: now - 60_000, temporal: buildTemporal({ observedAt: now - 60_000, confirmedAt: now, basis: 'sensor-observation' }), attributes: {}, provenance: [] }
+    expect(signalToIntelligence(base).status).toBe('near-real-time')
+    expect(signalToIntelligence({ ...base, source: { ...base.source, freshness: 'delayed' } }).status).toBe('recent')
+    expect(signalToIntelligence({ ...base, source: { ...base.source, freshness: 'cached' } }).status).toBe('cached')
+    expect(signalToIntelligence({ ...base, source: { ...base.source, provider: 'nhc', freshness: 'delayed' } }).status).toBe('forecast')
+  })
+
+  it('keeps repeated FIRMS pixels unclassified without multi-day source evidence', () => {
+    const now = 1_800_000_000_000
+    const thermal: Signal = { id: 'firms-1', source: { provider: 'firms', retrievedAt: now, freshness: 'delayed' }, type: 'fire', title: 'Thermal detection', timestamp: now, location: { latitude: 34, longitude: -118 }, attributes: {}, provenance: [] }
+    const repeats = [2, 3].map((index) => ({ ...thermal, id: `firms-${index}`, timestamp: now - index * 30 * 60_000 }))
+    expect(classifyThermalSignal(thermal, [thermal, ...repeats]).classification).toBe('unclassified')
+  })
+
+  it('can contextualize a current thermal pixel with a still-open delayed event', () => {
+    const now = 1_800_000_000_000
+    const thermal: Signal = { id: 'firms-current', source: { provider: 'firms', retrievedAt: now, freshness: 'delayed' }, type: 'fire', title: 'Thermal detection', timestamp: now, temporal: buildTemporal({ observedAt: now, confirmedAt: now, basis: 'sensor-observation' }), location: { latitude: 34, longitude: -118 }, attributes: {}, provenance: [] }
+    const openFire: Signal = { id: 'eonet-open', source: { provider: 'eonet', retrievedAt: now, freshness: 'delayed' }, type: 'fire', title: 'Wildfire report', timestamp: now - 5 * 86400000, temporal: buildTemporal({ observedAt: now - 5 * 86400000, confirmedAt: now - 60_000, basis: 'current-state-confirmation' }), location: { latitude: 34.01, longitude: -118 }, attributes: {}, provenance: [] }
+    expect(classifyThermalSignal(thermal, [openFire]).classification).toBe('possible-fire')
+  })
+
+  it('uses an open GDACS validity interval rather than its old start date', () => {
+    const now = 1_800_000_000_000
+    const thermal: Signal = { id: 'firms-current', source: { provider: 'firms', retrievedAt: now, freshness: 'delayed' }, type: 'fire', title: 'Thermal detection', timestamp: now, temporal: buildTemporal({ observedAt: now, confirmedAt: now, basis: 'sensor-observation' }), location: { latitude: 34, longitude: -118 }, attributes: {}, provenance: [] }
+    const openFire: Signal = { id: 'gdacs-open', source: { provider: 'gdacs', retrievedAt: now, freshness: 'delayed' }, type: 'fire', title: 'Wildfire report', timestamp: now - 5 * 86400000, temporal: buildTemporal({ validFrom: now - 5 * 86400000, confirmedAt: now, basis: 'product-validity' }), expiresAt: now + 86400000, location: { latitude: 34.01, longitude: -118 }, attributes: {}, provenance: [] }
+    expect(classifyThermalSignal(thermal, [openFire]).classification).toBe('possible-fire')
   })
 
   it('refuses generic or unlicensed hero media for selected hazards', () => {

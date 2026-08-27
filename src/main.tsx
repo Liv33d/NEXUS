@@ -5,20 +5,12 @@ import App from './App'
 import { AppErrorBoundary } from './components/AppErrorBoundary'
 import './styles.css'
 
-let serviceWorkerReloading = false
-
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (serviceWorkerReloading) return
-    serviceWorkerReloading = true
-    window.location.reload()
-  })
-}
-
-const updateServiceWorker = registerSW({
+registerSW({
   immediate: true,
   onNeedRefresh: () => {
-    void updateServiceWorker(true)
+    // The waiting worker activates after every NEXUS tab closes. Never force
+    // a live tab to reload while a Case note or selection may be unsaved.
+    document.documentElement.dataset.updateReady = 'true'
   },
   onRegisteredSW: (_serviceWorkerUrl, registration) => {
     if (!registration) return

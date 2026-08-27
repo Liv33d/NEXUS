@@ -1,5 +1,7 @@
 # NEXUS recovery and integration audit
 
+> Historical V2 audit. Current V3 behavior and release boundaries are recorded in `V3_NOTES.md` and `ARCHITECTURE.md`.
+
 Audit date: 2026-08-21
 
 This document uses strict states: **IMPLEMENTED** means working end-to-end; **PARTIAL** means meaningful functionality exists but important pieces are absent; **PLACEHOLDER** means UI/schema without a working capability; **MISSING** means no meaningful implementation; **BROKEN** means present but unreliable; **DEFERRED** means intentionally postponed for a documented reason.
