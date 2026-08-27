@@ -66,6 +66,14 @@ describe('globe visual stability contract', () => {
     expect(life).toContain('coarse H3 cells')
   })
 
+  it('keeps selection visible independently of signal clustering', () => {
+    const map = readFileSync(resolve(process.cwd(), 'src/components/ConnectedMapView.tsx'), 'utf8')
+    expect(map).toContain("map.addSource('nexus-selection'")
+    expect(map).toContain("id: 'nexus-selection-halo'")
+    expect(map).toContain("id: 'nexus-selection-core'")
+    expect(map).toContain("setData(selectionCollection(location))")
+  })
+
   it('exposes every normalized signal category in Earth controls', () => {
     for (const type of ['earthquake', 'fire', 'weather', 'aircraft', 'satellite', 'space-weather', 'media', 'environment', 'infrastructure']) {
       expect(layers).toContain(`'${type}'`)
